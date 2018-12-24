@@ -1,7 +1,7 @@
 all: tag
 run: model.txt tag
 	./tag model.txt
-model.txt: genmodel
+model.txt:
 	python3 makemodel.py
 	# ./genmodel
 tag: tag.cpp

@@ -21,6 +21,7 @@ vector<int> EqvClass;
 char tagname[TAGNUM][MAXTAGLEN]={};
 double initial[TAGNUM];
 double transition[TAGNUM][TAGNUM];
+double trigram[TAGNUM][TAGNUM][TAGNUM];
 double* emission[TAGNUM];
 double inf = std::numeric_limits<double>::infinity();
 int EQCLASS;
@@ -28,6 +29,7 @@ int EQCLASS;
 void load_model(char* name);
 int wordIndex(string const& word);
 void POStag(vector<string> const& sentence, vector<int>& tag);
+void POStag3(vector<string> const& sentence, vector<int>& tag);
 
 int main(int argc, char** argv){
 	assert(argc==2);
@@ -48,7 +50,8 @@ int main(int argc, char** argv){
 			}
 		}
 		vector<int> tags(tokenized.size());
-		POStag(tokenized, tags);
+		// POStag(tokenized, tags);
+		POStag3(tokenized, tags);
 		for(int i = 0; i < tags.size(); i++){
 			cout << tokenized[i] << "(" << tagname[tags[i]] << ") ";
 		}
@@ -98,6 +101,7 @@ void POStag(vector<string> const& sentence, vector<int>& tag){
 			double logprob = -inf;
 			if(index==-1 || emission[i][index]){					
 				for(int j = 0; j < TAGNUM; j++){
+					if(transition[j][i]==0) continue;
 					double tmp = delta[j][t-1] + log(transition[j][i]);
 					if(tmp > logprob){
 						logprob = tmp;
@@ -109,42 +113,6 @@ void POStag(vector<string> const& sentence, vector<int>& tag){
 			delta[i][t] = logprob;
 		}
 	}
-
-	// // t = 0
-	// int index = wordIndex(sentence[0]);
-	// if(index==-1){
-	// 	cerr << sentence[0] << " not in dictionary." << endl;
-	// }
-	// for(int i = 0; i < TAGNUM; i++){
-	// 	double logprob = -inf;
-	// 	if(emission[i][index])
-	// 		logprob = log(initial[i]) + log(emission[i][index]);
-	// 	delta[i][0] = logprob;
-	// }
-
-	// // t > 0
-	// for(int t = 1; t < sentence.size();t++){
-	// 	index = wordIndex(sentence[t]);
-	// 	if(index==-1){
-	// 		cerr << sentence[0] << " not in dictionary." << endl;
-	// 	}
-	// 	for(int i = 0; i < TAGNUM; i++){			
-	// 		phi[i][t] = -1;
-	// 		double logprob = -inf;
-	// 		if(emission[i][index]){
-				
-	// 			for(int j = 0; j < TAGNUM; j++){
-	// 				double tmp = delta[j][t-1] + log(transition[j][i]);
-	// 				if(tmp > logprob){
-	// 					logprob = tmp;
-	// 					phi[i][t] = j;
-	// 				}
-	// 			}
-	// 			logprob += log(emission[i][index]);
-	// 		}
-	// 		delta[i][t] = logprob;
-	// 	}
-	// }
 
 	// find best tail
 	int best_tail = -1;
@@ -166,6 +134,100 @@ void POStag(vector<string> const& sentence, vector<int>& tag){
 	for(int i = 0; i < TAGNUM; i++){
 		delete[] delta[i];
 		delete[] phi[i];
+	}
+}
+
+void POStag3(vector<string> const& sentence, vector<int>& tag){
+	double* delta[TAGNUM][TAGNUM];
+	int* phi[TAGNUM][TAGNUM];
+	for(int i = 0; i < TAGNUM; i++){
+		for(int j = 0; j < TAGNUM; j++){
+			delta[i][j] = new double[sentence.size()];
+			phi[i][j] = new int[sentence.size()];
+		}
+	}
+
+	// t = 0
+	int index = wordIndex(sentence[0]);
+	for(int i = 0; i < TAGNUM; i++){
+		double emi_i = index==-1 ? (1.0/TAGNUM) : emission[i][index];		
+		for(int j = 0; j < TAGNUM; j++)
+			delta[i][j][0] = emi_i==0 ? -inf : ( log(initial[i]) + log(emi_i) );
+	}
+
+	// t = 1
+	index = wordIndex(sentence[1]);
+	int pindex = wordIndex(sentence[0]);
+	for(int i = 0; i < TAGNUM; i++){
+		for(int j = 0; j < TAGNUM; j++){
+			double emi_i = index==-1 ? (1.0/TAGNUM) : emission[i][index];
+			double emi_j = pindex==-1 ? (1.0/TAGNUM) : emission[j][pindex];
+			if(emi_i==0 || emi_j==0 || transition[j][i]==0)
+				delta[i][j][1] = -inf;
+			else
+				delta[i][j][1] = delta[j][0][0] + log(transition[j][i]) + log(emi_i) + log(emi_j);
+		}
+	}
+
+	// t > 0
+	for(int t = 2; t < sentence.size();t++){
+		index = wordIndex(sentence[t]);
+		pindex = wordIndex(sentence[t-1]);
+
+		for(int i = 0; i < TAGNUM; i++){
+			for(int j = 0; j < TAGNUM; j++){
+				double emi_i = index==-1 ? (1.0/TAGNUM) : emission[i][index];
+				double emi_j = pindex==-1 ? (1.0/TAGNUM) : emission[j][pindex];
+				if(emi_i==0 || emi_j==0){
+					phi[i][j][t] = -1;
+					delta[i][j][t] = -inf;
+				}
+				else{
+					phi[i][j][t] = -1;
+					double logprob = -inf;
+					for(int k = 0; k < TAGNUM; k++){
+						if(trigram[k][j][i]<=0){ cerr << "bad trigram." <<endl; exit(1);};
+						double tmp = delta[j][k][t-1] + log(trigram[k][j][i]);
+						if(tmp > logprob){
+							logprob = tmp;
+							phi[i][j][t] = k;
+						}
+					}
+					delta[i][j][t] = logprob + log(emi_i) + log(emi_j);
+				}
+			}
+		}		
+	}
+
+	// find best tail
+	int best_tail_i = -1, best_tail_j = -1;
+	double best_prob = -inf;
+	for(int i = 0; i < TAGNUM; i++){			
+		for(int j = 0; j < TAGNUM; j++){
+			// cout << "p=" << delta[i][j][sentence.size()-1] << " i=" << i << " j=" << j << endl;
+			if(delta[i][j][sentence.size()-1]>best_prob){
+				best_tail_i = i;
+				best_tail_j = j;
+				best_prob = delta[i][j][sentence.size()-1];
+			}
+		}
+	}
+
+	// back tracking	
+	for(int t = sentence.size()-1; t >= 1; t--){
+		// cout << "t=" << t << " i=" << best_tail_i << " j=" << best_tail_j << endl;
+		tag[t] = best_tail_i;
+		tag[t-1] = best_tail_j;
+		int tmp = phi[best_tail_i][best_tail_j][t];
+		best_tail_i = best_tail_j;
+		best_tail_j = tmp;
+	}
+
+	for(int i = 0; i < TAGNUM; i++){
+		for(int j = 0; j < TAGNUM; j++){
+			delete[] delta[i][j];
+			delete[] phi[i][j];
+		}
 	}
 }
 
@@ -200,6 +262,16 @@ void load_model(char* name){
 		}
 	}
 	// fprintf(stderr, "[DEBUG] transition done.\n");
+
+	fscanf(fp, "%s", buffer);
+	assert(strncmp(buffer, "#trigram", 8)==0);
+	for(int i = 0; i < TAGNUM; i++){		
+		for(int j = 0; j < TAGNUM; j++){		
+			for(int k = 0; k < TAGNUM; k++){		
+				fscanf(fp, "%lf", &trigram[i][j][k]);
+			}
+		}
+	}
 
 	fscanf(fp, "%s", buffer);
 	assert(strncmp(buffer, "#vocab", 6)==0);
