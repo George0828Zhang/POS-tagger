@@ -9,8 +9,9 @@
 #include <cmath>
 #include "Array.h"
 
-#define TAGNUM 174
-#define MAXWDLEN 50
+// #define TAGNUM 60
+#define MAXTAGNUM 200 
+#define MAXWDLEN 200
 #define MAXTAGLEN 10
 
 using namespace std;
@@ -18,13 +19,14 @@ using namespace std;
 
 unordered_map<string, int> dict_map;
 unordered_map<string, int> tag_map;
-vector<string> dictionary;
 vector<int> EqvClass;
-char tagname[TAGNUM][MAXTAGLEN]={};
-double initial[TAGNUM];
-double transition[TAGNUM][TAGNUM];
-double trigram[TAGNUM][TAGNUM][TAGNUM];
-double* emission[TAGNUM];
+char tagname[MAXTAGNUM][MAXTAGLEN]={};
+double initial[MAXTAGNUM];
+double transition[MAXTAGNUM][MAXTAGNUM];
+double trigram[MAXTAGNUM][MAXTAGNUM][MAXTAGNUM];
+double* emission[MAXTAGNUM];
+
+int TAGNUM;
 const double inf = std::numeric_limits<double>::infinity();
 
 void load_model(char* name);
@@ -82,29 +84,25 @@ void POStag3(vector<string> const& sentence, vector<int>& tag){
 	// t = 1
 	if(slen > 1){
 		index = wordIndex(sentence[1]);
-		int pindex = wordIndex(sentence[0]);
 		for(int i = 0; i < TAGNUM; i++){
 			for(int j = 0; j < TAGNUM; j++){
 				double emi_i = index==-1 ? (1.0/TAGNUM) : emission[i][index];
-				double emi_j = pindex==-1 ? (1.0/TAGNUM) : emission[j][pindex];
-				if(emi_i==0 || emi_j==0 || transition[j][i]==0)
+				if(emi_i==0 || transition[j][i]==0)
 					delta[{i,j,1}] = -inf;
 				else
-					delta[{i,j,1}] = delta[{j,0,0}] + log(transition[j][i]) + log(emi_i) + log(emi_j);
+					delta[{i,j,1}] = delta[{j,0,0}] + log(transition[j][i]) + log(emi_i);
 			}
 		}
 
 		// t > 0
 		for(int t = 2; t < slen;t++){
 			index = wordIndex(sentence[t]);
-			pindex = wordIndex(sentence[t-1]);
 
 			for(int i = 0; i < TAGNUM; i++){
 				for(int j = 0; j < TAGNUM; j++){
 					double emi_i = index==-1 ? (1.0/TAGNUM) : emission[i][index];
-					double emi_j = pindex==-1 ? (1.0/TAGNUM) : emission[j][pindex];
 					phi[{i,j,t}] = -1;
-					if(emi_i==0 || emi_j==0){
+					if(emi_i==0){
 						delta[{i,j,t}] = -inf;
 					}
 					else{
@@ -117,7 +115,7 @@ void POStag3(vector<string> const& sentence, vector<int>& tag){
 								phi[{i,j,t}] = k;
 							}
 						}
-						delta[{i,j,t}] = logprob + log(emi_i) + log(emi_j);
+						delta[{i,j,t}] = logprob + log(emi_i);
 					}
 				}
 			}		
@@ -157,8 +155,8 @@ void load_model(char* name){
 
 	fscanf(fp, "%s", buffer);
 	assert(strncmp(buffer, "#initial", 8)==0);
-	fscanf(fp, "%d", &d);
-	assert(d==TAGNUM);
+	fscanf(fp, "%d", &TAGNUM);
+	// assert(d==TAGNUM);
 	for(int i = 0; i < TAGNUM; i++){
 		memset(buffer, 0, MAXWDLEN);
 		fscanf(fp, "%s", buffer);
@@ -197,11 +195,12 @@ void load_model(char* name){
 	while(strncmp(buffer, "#emission", 9)!=0){
 		fscanf(fp, "%d", &d);
 		string vocab(buffer);
-		dictionary.push_back(vocab);
+		// dictionary.push_back(vocab);
 		EqvClass.push_back(d);
-		dict_map[vocab] = dictionary.size()-1;
+		dict_map[vocab] = EqvClass.size()-1;
 		fscanf(fp, "%s", buffer);
 	}
+	cout << "[Info] Dictionary Size:\t" << EqvClass.size() << endl;
 
 	int EQCLASS;
 	fscanf(fp, "%d", &EQCLASS);

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # from nltk.corpus import treebank
-from nltk.corpus import brown as corpus
+# from nltk.corpus import brown as corpus
+from nltk.corpus import masc_tagged as corpus
 
 tagged_sentences = corpus.tagged_sents();
 
@@ -14,48 +15,63 @@ transition = {}
 trigram = {}
 corpus_N = 0
 
+mod_brown = False 
+longest = 0
+
 
 # preparation
 for sentence in tagged_sentences:
 	for i, (word, tag) in enumerate(sentence):
 		corpus_N += 1
-		tag = tag.replace('FW-', '').replace('-HL', '').replace('-TL', '').replace('-NC', '').replace('-T', '').replace('-N', '')
-		if len(tag) > 1:
-			tag = tag.replace('*', '')
+		
+		if mod_brown:
+			tag = tag.replace('FW-', '').replace('-HL', '').replace('-TL', '').replace('-NC', '').replace('-T', '').replace('-N', '')
+			if len(tag) > 1:
+				tag = tag.replace('*', '')
 
-		# words.add(word)
 		if word not in words:
 			words[word] = set()
 			wordcount[word] = 0
 		words[word].add(tag)
 		wordcount[word] += 1
 
+		# if len(word) > longest:
+		# 	longest = len(word)
+		# if len(word) == 156:
+		# 	print(word, tag)
+
+
 		if tag not in initial:
-			# emission[tag] = {}
 			initial[tag] = 0
-		# if word not in emission[tag]:
-		# 	emission[tag][word] = 0
-		# emission[tag][word] += 1
+		if tag not in transition:
+				transition[tag] = {}
+
+		# if tag in ["VBG|NN", "ONE-TIME"]:
+		# 	print (word, tag)
+		# 	print (sentence)
+
 		initial[tag] += 1
 		if i > 0:
-			ptag = sentence[i-1][1].replace('FW-', '').replace('-HL', '').replace('-TL', '').replace('-NC', '').replace('-T', '').replace('-N', '')
-			if len(ptag) > 1:
-				ptag = ptag.replace('*', '')
-			if ptag not in transition:
-				transition[ptag] = {}
+			ptag = sentence[i-1][1]
+			if mod_brown:
+				ptag = ptag.replace('FW-', '').replace('-HL', '').replace('-TL', '').replace('-NC', '').replace('-T', '').replace('-N', '')
+				if len(ptag) > 1:
+					ptag = ptag.replace('*', '')			
 			if tag not in transition[ptag]:
 				transition[ptag][tag] = 0
 			transition[ptag][tag] += 1
 			if i > 1:
-				pptag = sentence[i-2][1].replace('FW-', '').replace('-HL', '').replace('-TL', '').replace('-NC', '').replace('-T', '').replace('-N', '')
-				if len(pptag) > 1:
-					pptag = pptag.replace('*', '')
+				pptag = sentence[i-2][1]
+				if mod_brown:
+					pptag = pptag.replace('FW-', '').replace('-HL', '').replace('-TL', '').replace('-NC', '').replace('-T', '').replace('-N', '')
+					if len(pptag) > 1:
+						pptag = pptag.replace('*', '')
 				if (pptag, ptag) not in trigram:
 					trigram[(pptag, ptag)] = {}
 				if tag not in trigram[(pptag, ptag)]:
 					trigram[(pptag, ptag)][tag] = 0
 				trigram[(pptag, ptag)][tag] += 1
-
+# print(longest)
 # create equivalence classes
 Eqv = []
 best100 = sorted(wordcount, key=lambda x: wordcount[x])[-100:]
@@ -82,7 +98,7 @@ for ptag in initial:
 	for tag in initial: 
 		domi = 0 if tag not in transition[ptag] else transition[ptag][tag]
 		transition[ptag][tag] = domi
-		file.write("{:.9f} ".format(domi / denom))
+		file.write("{:.9f} ".format(0 if denom==0 else (domi / denom)))
 	file.write("\n")
 
 file.write("\n#trigram \n")
@@ -139,9 +155,10 @@ file.write("\n")
 emission = {}
 for sentence in tagged_sentences:
 	for i, (word, tag) in enumerate(sentence):
-		tag = tag.replace('FW-', '').replace('-HL', '').replace('-TL', '').replace('-NC', '').replace('-T', '').replace('-N', '')
-		if len(tag) > 1:
-			tag = tag.replace('*', '')
+		if mod_brown:
+			tag = tag.replace('FW-', '').replace('-HL', '').replace('-TL', '').replace('-NC', '').replace('-T', '').replace('-N', '')
+			if len(tag) > 1:
+				tag = tag.replace('*', '')
 
 		if tag not in emission:
 			emission[tag] = [0]*len(Eqv)
