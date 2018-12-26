@@ -20,8 +20,8 @@ constexpr int MAXTAGNUM = 62;
 constexpr int MAXWDLEN = 200;
 constexpr int MAXTAGLEN = 10;
 constexpr int RARETHRES = 10;
-constexpr int MAXSUFFIX = 10;
-constexpr int BEAMSIZE = 500;
+constexpr int MAXSUFFIX = 5;
+constexpr int BEAMSIZE = 100;
 
 
 using namespace std;
@@ -52,7 +52,7 @@ int main(int argc, char** argv){
 	load_model(argv[1]);
 	string sentence;
 	while(getline(cin, sentence)){
-		if(sentence.size()<2) continue;
+		// if(sentence.size()<2) continue;
 		vector<string> tokenized;
 		tokenizer(sentence, tokenized);
 		// Capitalization
@@ -86,11 +86,7 @@ double oovEmission(string const& word, int tg){
 	for(int l = min(MAXSUFFIX, wlen); l > 0; l--){
 		int index = suffIndex(word.substr(wlen-l, l));
 		if(index!=-1){
-			double prob = 0.;
-			for(int q = 0; q < EQCLASS; q++){
-				prob += (suf_emission[{index,q}]*emission[tg][q]);
-			}
-			return prob;
+			return suf_emission[{tg, index}];
 		}
 	}
 	return (1.0/TAGNUM);
@@ -98,7 +94,7 @@ double oovEmission(string const& word, int tg){
 
 Array<double> delta;
 Array<int> phi;
-Kmax<double, int > beamspace(BEAMSIZE);
+Kmax<double, int> beamspace(BEAMSIZE);
 vector<int> beam;
 void POStag3(vector<string> const& sentence, vector<int>& tag){
 	int slen = sentence.size();
@@ -124,8 +120,8 @@ void POStag3(vector<string> const& sentence, vector<int>& tag){
 		beamspace.clear();
 		index = wordIndex(sentence[1]);
 		for(int i = 0; i < TAGNUM; i++){
-			for(int j = 0; j < TAGNUM; j++){
-				double emi_i = index==-1 ? oovEmission(sentence[1], i) : emission[i][index];
+			double emi_i = index==-1 ? oovEmission(sentence[1], i) : emission[i][index];
+			for(int j = 0; j < TAGNUM; j++){				
 				if(emi_i>0 && transition[j][i]>0){
 					delta[{i,j,1}] = delta[{j,0,0}] + log(transition[j][i]) + log(emi_i);	
 				}
@@ -133,7 +129,7 @@ void POStag3(vector<string> const& sentence, vector<int>& tag){
 			}
 		}
 
-		// t > 0
+		// t > 1
 		for(int t = 2; t < slen;t++){
 			beamspace.extract(beam);
 			beamspace.clear();
@@ -157,31 +153,206 @@ void POStag3(vector<string> const& sentence, vector<int>& tag){
 			}
 		}
 	}
-	// beamspace.extract(beam);
-	// beamspace.print();
 
 	// find best tail
 	int best_tail_i = -1, best_tail_j = -1;
 	double best_prob = -inf;
-	for(int i = 0; i < TAGNUM; i++){			
-		for(int j = 0; j < TAGNUM; j++){
-			if(delta[{i,j,slen-1}]>best_prob){
-				best_tail_i = i;
-				best_tail_j = j;
-				best_prob = delta[{i,j,slen-1}];
-			}
+	// for(int i = 0; i < TAGNUM; i++){			
+	// 	for(int j = 0; j < TAGNUM; j++){
+	// 		if(delta[{i,j,slen-1}]>best_prob){
+	// 			best_tail_i = i;
+	// 			best_tail_j = j;
+	// 			best_prob = delta[{i,j,slen-1}];
+	// 		}
+	// 	}
+	// }
+	beamspace.extract(beam);
+	for(auto& pair : beam){
+		int i = pair/TAGNUM, j = pair%TAGNUM;					
+		if(delta[{i,j,slen-1}]>best_prob){
+			best_tail_i = i;
+			best_tail_j = j;
+			best_prob = delta[{i,j,slen-1}];
 		}
 	}
 
+
 	// back tracking	
 	for(int t = slen-1; t >= 1; t--){
-		// cerr << "t=" << t << "ij=" << best_tail_i << " " << best_tail_j << endl;
 		tag[t] = best_tail_i;
 		tag[t-1] = best_tail_j;
 		if (t==1) break;
 		int tmp = phi[{best_tail_i,best_tail_j,t}];
 		best_tail_i = best_tail_j;
 		best_tail_j = tmp;
+	}
+}
+
+void tokenizer2(string const& sentence, vector<string>& tokenized){
+	const string common_ch = "~!@#$%%^&*()_+=`\\/.,<>?\":;";
+	// "-" might be hyphenized text, and ' and . might be abreviation
+	int slen = sentence.size();
+	int tlen = 0;
+	int c_at;
+	for(int i = 0; i < slen; i++){
+		char c = sentence[i];
+		if(common_ch.find(c) != string::npos){
+			if(tlen){
+				// process sub-word tokenizing TODO
+				string word = sentence.substr(i-tlen, tlen);
+				c_at = word.find('\'');
+				if(c_at != string::npos && c_at != 0){
+					tokenized.push_back(word.substr(0, c_at));
+					word.erase(0, c_at);
+				}				
+				tokenized.push_back(word);
+			}
+			tokenized.push_back(string(1, c));
+			tlen = 0;
+		}else if(tlen && (c == ' ' || c == '\n' || c == '\t' || c == '\r')){
+			// process sub-word tokenizing TODO
+			string word = sentence.substr(i-tlen, tlen);
+			c_at = word.find('\'');
+			if(c_at != string::npos && c_at != 0){
+				tokenized.push_back(word.substr(0, c_at));
+				word.erase(0, c_at);
+			}				
+			tokenized.push_back(word);
+			tlen = 0;
+		}else if(i == slen - 1){
+			// process sub-word tokenizing TODO
+			string word = sentence.substr(i-tlen, 1+tlen);
+			c_at = word.find('\'');
+			if(c_at != string::npos && c_at != 0){
+				tokenized.push_back(word.substr(0, c_at));
+				word.erase(0, c_at);
+			}				
+			tokenized.push_back(word);
+			tlen = 0;
+		}
+		else
+			tlen++;
+	}
+}
+
+void tokenizer(string const& sentence, vector<string>& tokenized){
+
+	int slen = sentence.size();
+	int tlen = 0;
+	int c_at;
+	for(int i = 0; i < slen; i++){
+		char c = sentence[i];
+		if(tlen && (c == ' ' || c == '\n' || c == '\t' || c == '\r')){
+			string word = sentence.substr(i-tlen, tlen);							
+			tokenized.push_back(word);
+			tlen = 0;
+		}else if(i == slen - 1){
+			string word = sentence.substr(i-tlen, 1+tlen);							
+			tokenized.push_back(word);
+			tlen = 0;
+		}
+		else
+			tlen++;
+	}
+}
+
+
+
+void load_model(char* name){
+	char buffer[MAXWDLEN];
+	double p;
+	int d;
+	FILE* fp = fopen(name, "rt");
+
+	fscanf(fp, "%s", buffer);
+	assert(strncmp(buffer, "#initial", 8)==0);
+	fscanf(fp, "%d", &TAGNUM);
+	cerr << "[Info] Tagset Size: " << TAGNUM << endl;
+
+	for(int i = 0; i < TAGNUM; i++){
+		memset(buffer, 0, MAXWDLEN);
+		fscanf(fp, "%s", buffer);
+		strncpy(tagname[i], buffer, MAXTAGLEN);
+		string tmp = buffer;
+		// tag_map[tmp] = i;
+	}
+	for(int i = 0; i < TAGNUM; i++){		
+		fscanf(fp, "%lf", &initial[i]);
+	}
+
+	fscanf(fp, "%s", buffer);
+	assert(strncmp(buffer, "#transition", 11)==0);
+
+	for(int i = 0; i < TAGNUM; i++){		
+		for(int j = 0; j < TAGNUM; j++){		
+			fscanf(fp, "%lf", &transition[i][j]);
+		}
+	}
+
+	fscanf(fp, "%s", buffer);
+	assert(strncmp(buffer, "#trigram", 8)==0);
+	for(int i = 0; i < TAGNUM; i++){		
+		for(int j = 0; j < TAGNUM; j++){		
+			for(int k = 0; k < TAGNUM; k++){		
+				fscanf(fp, "%lf", &trigram[i][j][k]);
+			}
+		}
+	}
+
+	fscanf(fp, "%s", buffer);	
+	assert(strncmp(buffer, "#emission", 9)==0);
+	
+	// int EQCLASS;
+	fscanf(fp, "%d", &EQCLASS);
+	for(int i = 0; i < TAGNUM; i++){
+		emission[i] = new double[EQCLASS]();		
+		for(int j = 0; j < EQCLASS; j++){
+			fscanf(fp, "%lf", &emission[i][j]);
+		}
+	}
+	cerr << "[Info] Equivalent Classes: " << EQCLASS << endl;
+
+	fscanf(fp, "%s", buffer);
+	assert(strncmp(buffer, "#vocab_freq_Eqv", 15)==0);
+	int freq;
+
+	vector<vector<int> > f_S_Eqv;
+	int sum_of_Suffix[EQCLASS];
+	memset(sum_of_Suffix, 0, EQCLASS*sizeof(int));
+	while(fscanf(fp, "%s %d %d", buffer, &freq, &d)!=EOF){
+		string vocab(buffer);
+		dict_map[vocab] = d;
+
+		if(freq < RARETHRES){
+			for(int i = 0; i < MAXSUFFIX && i < vocab.size(); i++){
+				string suf = vocab.substr(vocab.size()-1-i,i+1);
+				int suf_index = suffIndex(suf);
+				if(suf_index==-1){					
+					f_S_Eqv.push_back(vector<int>(EQCLASS, 0));
+					suf_index = f_S_Eqv.size() - 1;
+					suffix_map[suf] = suf_index;
+				}
+				f_S_Eqv[suf_index][d] += freq;
+				sum_of_Suffix[d] += freq;
+			}
+		}
+	}
+	cerr << "[Info] Dictionary Size: " << dict_map.size() << endl;
+	cerr << "[Info] Suffix Map Size: " << suffix_map.size() << endl;
+
+	// TODO: remove suffixes that appeared only once?
+	// suffix smoothing	
+	suf_emission.reshape({TAGNUM, (int)suffix_map.size()});
+
+	for(int tg = 0; tg < TAGNUM; tg++){
+		for(int s = 0; s < suffix_map.size(); s++){
+			double prob = 0.;
+			for(int q = 0; q < EQCLASS; q++){
+				double P_S_Eqv = sum_of_Suffix[q] ? ((double)f_S_Eqv[s][q])/(double)sum_of_Suffix[q] : 0.;
+				prob += emission[tg][q] * P_S_Eqv;
+			}
+			suf_emission[{tg, s}] = prob;
+		}		
 	}
 }
 
@@ -262,169 +433,6 @@ void POStag3_old(vector<string> const& sentence, vector<int>& tag){
 		best_tail_j = tmp;
 	}
 }
-
-void tokenizer2(string const& sentence, vector<string>& tokenized){
-	const string common_ch = "~!@#$%%^&*()_+=`\\/.,<>?\":;";// "-" might be hyphenized text, and ' and . might be abreviation
-	int slen = sentence.size();
-	int tlen = 0;
-	int c_at;
-	for(int i = 0; i < slen; i++){
-		char c = sentence[i];
-		if(common_ch.find(c) != string::npos){
-			if(tlen){
-				// process sub-word tokenizing TODO
-				string word = sentence.substr(i-tlen, tlen);
-				c_at = word.find('\'');
-				if(c_at != string::npos && c_at != 0){
-					tokenized.push_back(word.substr(0, c_at));
-					word.erase(0, c_at);
-				}				
-				tokenized.push_back(word);
-			}
-			tokenized.push_back(string(1, c));
-			tlen = 0;
-		}else if(tlen && (c == ' ' || c == '\n' || c == '\t' || c == '\r')){
-			// process sub-word tokenizing TODO
-			string word = sentence.substr(i-tlen, tlen);
-			c_at = word.find('\'');
-			if(c_at != string::npos && c_at != 0){
-				tokenized.push_back(word.substr(0, c_at));
-				word.erase(0, c_at);
-			}				
-			tokenized.push_back(word);
-			tlen = 0;
-		}else if(i == slen - 1){
-			// process sub-word tokenizing TODO
-			string word = sentence.substr(i-tlen, 1+tlen);
-			c_at = word.find('\'');
-			if(c_at != string::npos && c_at != 0){
-				tokenized.push_back(word.substr(0, c_at));
-				word.erase(0, c_at);
-			}				
-			tokenized.push_back(word);
-			tlen = 0;
-		}
-		else
-			tlen++;
-	}
-}
-
-void tokenizer(string const& sentence, vector<string>& tokenized){
-
-	int slen = sentence.size();
-	int tlen = 0;
-	int c_at;
-	for(int i = 0; i < slen; i++){
-		char c = sentence[i];
-		if(tlen && (c == ' ' || c == '\n' || c == '\t' || c == '\r')){
-			string word = sentence.substr(i-tlen, tlen);							
-			tokenized.push_back(word);
-			tlen = 0;
-		}else if(i == slen - 1){
-			string word = sentence.substr(i-tlen, 1+tlen);							
-			tokenized.push_back(word);
-			tlen = 0;
-		}
-		else
-			tlen++;
-	}
-}
-
-
-
-void load_model(char* name){
-	char buffer[MAXWDLEN];
-	double p;
-	int d;
-	FILE* fp = fopen(name, "rt");
-
-	fscanf(fp, "%s", buffer);
-	assert(strncmp(buffer, "#initial", 8)==0);
-	fscanf(fp, "%d", &TAGNUM);
-	cerr << "[Info] Tagset Size:\t" << TAGNUM << endl;
-
-	for(int i = 0; i < TAGNUM; i++){
-		memset(buffer, 0, MAXWDLEN);
-		fscanf(fp, "%s", buffer);
-		strncpy(tagname[i], buffer, MAXTAGLEN);
-		string tmp = buffer;
-		// tag_map[tmp] = i;
-	}
-	for(int i = 0; i < TAGNUM; i++){		
-		fscanf(fp, "%lf", &initial[i]);
-	}
-
-	fscanf(fp, "%s", buffer);
-	assert(strncmp(buffer, "#transition", 11)==0);
-
-	for(int i = 0; i < TAGNUM; i++){		
-		for(int j = 0; j < TAGNUM; j++){		
-			fscanf(fp, "%lf", &transition[i][j]);
-		}
-	}
-
-	fscanf(fp, "%s", buffer);
-	assert(strncmp(buffer, "#trigram", 8)==0);
-	for(int i = 0; i < TAGNUM; i++){		
-		for(int j = 0; j < TAGNUM; j++){		
-			for(int k = 0; k < TAGNUM; k++){		
-				fscanf(fp, "%lf", &trigram[i][j][k]);
-			}
-		}
-	}
-
-	fscanf(fp, "%s", buffer);	
-	assert(strncmp(buffer, "#emission", 9)==0);
-	
-	// int EQCLASS;
-	fscanf(fp, "%d", &EQCLASS);
-	for(int i = 0; i < TAGNUM; i++){
-		emission[i] = new double[EQCLASS]();		
-		for(int j = 0; j < EQCLASS; j++){
-			fscanf(fp, "%lf", &emission[i][j]);
-		}
-	}
-	cerr << "[Info] Equivalent Classes:\t" << EQCLASS << endl;
-
-	fscanf(fp, "%s", buffer);
-	assert(strncmp(buffer, "#vocab_freq_Eqv", 15)==0);
-	int freq;
-
-	vector<vector<int> > f_S_Eqv;
-	int sum_of_Suffix[EQCLASS];
-	memset(sum_of_Suffix, 0, EQCLASS*sizeof(int));
-	while(fscanf(fp, "%s %d %d", buffer, &freq, &d)!=EOF){
-		string vocab(buffer);
-		dict_map[vocab] = d;
-
-		if(freq < RARETHRES){
-			for(int i = 0; i < MAXSUFFIX && i < vocab.size(); i++){
-				string suf = vocab.substr(vocab.size()-1-i,i+1);
-				int suf_index = suffIndex(suf);
-				if(suf_index==-1){					
-					f_S_Eqv.push_back(vector<int>(EQCLASS, 0));
-					suf_index = f_S_Eqv.size() - 1;
-					suffix_map[suf] = suf_index;
-				}
-				f_S_Eqv[suf_index][d] += freq;
-				sum_of_Suffix[d] += freq;
-			}
-		}
-	}
-	cerr << "[Info] Dictionary Size:\t" << dict_map.size() << endl;
-	cerr << "[Info] Suffix Map Size:\t" << suffix_map.size() << endl;
-
-	// TODO: remove suffixes that appeared only once?
-	// suffix smoothing
-	suf_emission.reshape({(int)suffix_map.size(), EQCLASS});
-
-	for(int s = 0; s < suffix_map.size(); s++){
-		for(int q = 0; q < EQCLASS; q++){
-			suf_emission[{s, q}] = sum_of_Suffix[q] ? ((double)f_S_Eqv[s][q])/(double)sum_of_Suffix[q] : 0.;
-		}
-	}
-}
-
 
 void POStag(vector<string> const& sentence, vector<int>& tag){
 	double* delta[TAGNUM];

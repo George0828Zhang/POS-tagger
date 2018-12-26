@@ -23,4 +23,4 @@ while sent_res != '':
 	sent_res = res.readline()
 	
 
-print("{} correct out of {}. Accuracy: {:2f}%".format(blkcorrect, blktotal, blkcorrect/blktotal*100))
+print("{} words out of {} are correct. Accuracy: {:.2f}%".format(blkcorrect, blktotal, blkcorrect/blktotal*100))

@@ -5,7 +5,7 @@ eval: model.txt tag
 	python3 evaluation.py
 run: model.txt tag
 	@./tag model.txt
-model.txt:
+model:
 	@python3 makemodel.py
 tag: tag.cpp Array.h
 	@g++ -std=c++17 tag.cpp -o tag

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 tagged_sentences = []
 
-# from nltk.corpus import masc_tagged as corpus
-# tagged_sentences += corpus.tagged_sents();
+from nltk.corpus import masc_tagged as corpus
+tagged_sentences += corpus.tagged_sents();
 
 
 from nltk.corpus import treebank as corpus

@@ -1,8 +1,10 @@
 #include <vector>
 #include <numeric>
 #include <cassert>
+#include <utility>
 
 using namespace std;
+
 template <class T1, class T2>
 class
 Kmax
@@ -12,20 +14,23 @@ private:
 	int _capacity;
 	vector<T1> _key;
 	vector<T2> _data;
-	void swap(int a, int b){
-		T1 tmpk = _key[a];
-		T2 tmpd = _data[a];
-		_key[a] = _key[b];
-		_data[a] = _data[b];		
-		_key[b] = tmpk;
-		_data[b] = tmpd;
-	}
+	// void swap(int a, int b){
+		
+	// 	T1 tmpk = _key[a];
+	// 	T2 tmpd = _data[a];
+	// 	_key[a] = _key[b];
+	// 	_data[a] = _data[b];		
+	// 	_key[b] = tmpk;
+	// 	_data[b] = tmpd;
+	// }
 	void UpHeap(){
 		int i = _nelem - 1;
 		while(i > 0){
 			int p = (i - 1)/2;
 			if(_key[p] > _key[i]){
-				swap(p, i);
+				std::swap (_key[p], _key[i]);
+				std::swap (_data[p], _data[i]);
+				// this.swap(p, i);
 				i = p;
 			}else break;
 		}
@@ -37,7 +42,9 @@ private:
 			if(chd + 1 < _nelem && _key[chd + 1] < _key[chd])
 				chd = chd + 1;
 			if(_key[chd] < _key[i]){
-				swap(chd, i);
+				std::swap (_key[chd], _key[i]);
+				std::swap (_data[chd], _data[i]);
+				// swap(chd, i);
 				i = chd;
 			}else break;
 		}
@@ -90,14 +97,13 @@ Array
 			
 		}
 		Array(const std::vector<int>& shape)
-			: _nelem(std::accumulate(shape.begin(), shape.end(),
-					1, multiplies<int>())),
+			: _nelem(std::accumulate(shape.begin(), shape.end(), 1, multiplies<int>())),
 			_shape(shape)
 		{
 			_data.resize(_nelem, 0);
 			_access.resize(shape.size(), 0);
 			int val = 1;
-			for(int i = shape.size() - 1; i >= 0; i--){				
+			for(int i = shape.size() - 1; i >= 0; i--){
 				_access[i] = val;
 				val *= shape.at(i);
 			}
@@ -118,13 +124,13 @@ Array
 
 		void reshape(const vector<int>& new_shape)
 		{
-			int newsz = accumulate(new_shape.begin(), new_shape.end(), 1, multiplies<int>());
+			int newsz = std::accumulate(new_shape.begin(), new_shape.end(), 1, multiplies<int>());
 			if(newsz > _data.size()){
 				_data.resize(newsz, 0);
 			}
 			_nelem = newsz;
 
-			int newsz2 = new_shape.size();	
+			int newsz2 = new_shape.size();
 			_shape = vector<int>(new_shape);
 			_access.resize(newsz2, 0);
 			int val = 1;
@@ -135,7 +141,7 @@ Array
 		}
 
 		void clear(T val){
-			fill(_data.begin(), _data.end(), val);
+			std::fill(_data.begin(), _data.end(), val);
 		}
 
 		int size() const
