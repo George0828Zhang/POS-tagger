@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
-# from nltk.corpus import treebank
-# from nltk.corpus import brown as corpus
-from nltk.corpus import masc_tagged as corpus
+tagged_sentences = []
 
-tagged_sentences = corpus.tagged_sents();
+from nltk.corpus import masc_tagged as corpus
+tagged_sentences += corpus.tagged_sents();
+
+
+from nltk.corpus import treebank as corpus
+tagged_sentences += corpus.tagged_sents();
+
 
 initial = {}
 # words = set()
@@ -15,65 +19,65 @@ transition = {}
 trigram = {}
 corpus_N = 0
 
-mod_brown = False 
+mod_brown = False
 longest = 0
 
+def tprocess(rawtag):	
+	if mod_brown:
+		rawtag = rawtag.replace('FW-', '').replace('-HL', '').replace('-TL', '').replace('-NC', '').replace('-T', '').replace('-N', '')
+		if len(rawtag) > 1:
+			rawtag = rawtag.replace('*', '')
+	if rawtag == None:
+		rawtag = "-NONE-"
+	return rawtag
+
+def process_token(word, tag, ptag=None, pptag=None):
+	global corpus_N
+
+	corpus_N += 1
+		
+	tag = tprocess(tag)
+
+	if word not in words:
+		words[word] = set()
+		wordcount[word] = 0
+	words[word].add(tag)
+	wordcount[word] += 1
+
+	if tag not in initial:
+		initial[tag] = 0
+	if tag not in transition:
+			transition[tag] = {}
+
+	# if "+" in tag and "\'" in word:
+	# 	print (word, tag)
+	# 	print (sentence)
+
+	initial[tag] += 1
+	if ptag != None:
+		ptag = tprocess(ptag)	
+		if tag not in transition[ptag]:
+			transition[ptag][tag] = 0
+		transition[ptag][tag] += 1
+		if pptag != None:
+			pptag = tprocess(pptag)	
+			if (pptag, ptag) not in trigram:
+				trigram[(pptag, ptag)] = {}
+			if tag not in trigram[(pptag, ptag)]:
+				trigram[(pptag, ptag)][tag] = 0
+			trigram[(pptag, ptag)][tag] += 1
 
 # preparation
 for sentence in tagged_sentences:
 	for i, (word, tag) in enumerate(sentence):
-		corpus_N += 1
-		
-		if mod_brown:
-			tag = tag.replace('FW-', '').replace('-HL', '').replace('-TL', '').replace('-NC', '').replace('-T', '').replace('-N', '')
-			if len(tag) > 1:
-				tag = tag.replace('*', '')
-
-		if word not in words:
-			words[word] = set()
-			wordcount[word] = 0
-		words[word].add(tag)
-		wordcount[word] += 1
-
-		# if len(word) > longest:
-		# 	longest = len(word)
-		# if len(word) == 156:
-		# 	print(word, tag)
-
-
-		if tag not in initial:
-			initial[tag] = 0
-		if tag not in transition:
-				transition[tag] = {}
-
-		# if tag in ["VBG|NN", "ONE-TIME"]:
-		# 	print (word, tag)
-		# 	print (sentence)
-
-		initial[tag] += 1
+		ptag, pptag = None, None
 		if i > 0:
 			ptag = sentence[i-1][1]
-			if mod_brown:
-				ptag = ptag.replace('FW-', '').replace('-HL', '').replace('-TL', '').replace('-NC', '').replace('-T', '').replace('-N', '')
-				if len(ptag) > 1:
-					ptag = ptag.replace('*', '')			
-			if tag not in transition[ptag]:
-				transition[ptag][tag] = 0
-			transition[ptag][tag] += 1
 			if i > 1:
 				pptag = sentence[i-2][1]
-				if mod_brown:
-					pptag = pptag.replace('FW-', '').replace('-HL', '').replace('-TL', '').replace('-NC', '').replace('-T', '').replace('-N', '')
-					if len(pptag) > 1:
-						pptag = pptag.replace('*', '')
-				if (pptag, ptag) not in trigram:
-					trigram[(pptag, ptag)] = {}
-				if tag not in trigram[(pptag, ptag)]:
-					trigram[(pptag, ptag)][tag] = 0
-				trigram[(pptag, ptag)][tag] += 1
+		process_token(word, tag, ptag, pptag);
+
 # print(longest)
-# create equivalence classes
-Eqv = []
 best100 = sorted(wordcount, key=lambda x: wordcount[x])[-100:]
 
 # output probability Model
@@ -120,6 +124,7 @@ for key in trigram:
 		elif mx == p3:
 			lbd[0] += fq
 sumlbd = sum(lbd)
+# print(lbd)
 
 for pptag in initial:
 	for ptag in initial:
@@ -138,35 +143,40 @@ for pptag in initial:
 				print(lbd, initial[tag], transition[ptag][tag])
 		file.write("\n")
 
-file.write("\n#vocab \n")
-for word in words:
-	cl = words[word]
+# file.write("\n#vocab \n")
+# create equivalence classes
+# Eqv = []
+# for word in words:
+# 	cl = words[word]
+# 	if word in best100:
+# 		Eqv.append(word)
+# 		file.write("{} {} ".format(word,  len(Eqv)-1))
+# 		continue
+# 	elif cl not in Eqv:
+# 		Eqv.append(cl)
+# 	file.write("{} {} ".format(word,  Eqv.index(cl)))
+# file.write("\n")
+Eqv = []
+for word in words:	
 	if word in best100:
-		Eqv.append(word)
-		file.write("{} {} ".format(word,  len(Eqv)-1))
-		continue
-	elif cl not in Eqv:
+		words[word] = word
+	cl = words[word]
+	if cl not in Eqv:
 		Eqv.append(cl)
-	file.write("{} {} ".format(word,  Eqv.index(cl)))
-file.write("\n")
-# print(len(Eqv)) 571
 
 
 emission = {}
 for sentence in tagged_sentences:
 	for i, (word, tag) in enumerate(sentence):
-		if mod_brown:
-			tag = tag.replace('FW-', '').replace('-HL', '').replace('-TL', '').replace('-NC', '').replace('-T', '').replace('-N', '')
-			if len(tag) > 1:
-				tag = tag.replace('*', '')
-
+		tag = tprocess(tag)
 		if tag not in emission:
 			emission[tag] = [0]*len(Eqv)
 		
-		if word in best100:
-			eqclass = Eqv.index(word)
-		else:
-			eqclass = Eqv.index(words[word])
+		# if word in best100:
+		# 	eqclass = Eqv.index(word)
+		# else:
+		# 	eqclass = Eqv.index(words[word])
+		eqclass = Eqv.index(words[word])
 		
 		emission[tag][eqclass] += 1
 
@@ -182,6 +192,12 @@ for tag in initial:
 		logprob = domi / denom
 		file.write("{:.9f} ".format(logprob))
 	file.write("\n")
+
+
+file.write("\n#vocab_freq_Eqv\n")
+for word in words:
+	file.write("{} {} {}\n".format(word, wordcount[word], Eqv.index(words[word])))	
+file.write("\n")
 
 
 

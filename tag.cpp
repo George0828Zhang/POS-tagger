@@ -7,19 +7,30 @@
 #include <vector>
 #include <limits>
 #include <cmath>
+#include <algorithm>
 #include "Array.h"
 
 // #define TAGNUM 60
-#define MAXTAGNUM 200 
-#define MAXWDLEN 200
-#define MAXTAGLEN 10
+// #define MAXTAGNUM 200 
+// #define MAXWDLEN 200
+// #define MAXTAGLEN 10
+// #define RARETHRES 10
+// #define MAXSUFFIX 2
+constexpr int MAXTAGNUM = 62; 
+constexpr int MAXWDLEN = 200;
+constexpr int MAXTAGLEN = 10;
+constexpr int RARETHRES = 10;
+constexpr int MAXSUFFIX = 10;
+
 
 using namespace std;
 
 
 unordered_map<string, int> dict_map;
-unordered_map<string, int> tag_map;
-vector<int> EqvClass;
+// unordered_map<string, int> tag_map;
+unordered_map<string, int> suffix_map;
+Array<double> suf_emission;
+// vector<int> EqvClass;
 char tagname[MAXTAGNUM][MAXTAGLEN]={};
 double initial[MAXTAGNUM];
 double transition[MAXTAGNUM][MAXTAGNUM];
@@ -27,11 +38,13 @@ double trigram[MAXTAGNUM][MAXTAGNUM][MAXTAGNUM];
 double* emission[MAXTAGNUM];
 
 int TAGNUM;
+int EQCLASS;
 const double inf = std::numeric_limits<double>::infinity();
 
 void load_model(char* name);
 int wordIndex(string const& word);
 void POStag3(vector<string> const& sentence, vector<int>& tag);
+void tokenizer(string const& sentence, vector<string>& tokenized);
 
 int main(int argc, char** argv){
 	assert(argc==2);
@@ -40,17 +53,7 @@ int main(int argc, char** argv){
 	while(getline(cin, sentence)){
 		if(sentence.size()<2) continue;
 		vector<string> tokenized;
-		for(int i = 0, ls = 0; i < sentence.size(); i++){
-			if (i==ls) continue;
-			if(sentence[i]==' ' || sentence[i]==0){
-				tokenized.push_back(sentence.substr(ls, i-ls));
-				ls = i+1;
-			}else if (sentence[i]=='.' || sentence[i]==',' || sentence[i]=='!' || sentence[i]=='?'){
-				tokenized.push_back(sentence.substr(ls, i-ls));
-				tokenized.push_back(string(1, sentence[i]));
-				ls = i+1;
-			}
-		}
+		tokenizer(sentence, tokenized);
 		vector<int> tags(tokenized.size());
 		POStag3(tokenized, tags);
 		for(int i = 0; i < tags.size(); i++){
@@ -63,7 +66,26 @@ int main(int argc, char** argv){
 
 int wordIndex(string const& word){
 	auto iter = dict_map.find(word);
-	return iter==dict_map.end() ? -1 : EqvClass[iter->second];
+	return iter==dict_map.end() ? -1 : iter->second;
+}
+int suffIndex(string const& word){
+	auto iter = suffix_map.find(word);
+	return iter==suffix_map.end() ? -1 : iter->second;
+}
+
+double oovEmission(string const& word, int tg){
+	int wlen = word.size();
+	for(int l = min(MAXSUFFIX, wlen); l > 0; l--){
+		int index = suffIndex(word.substr(wlen-l, l));
+		if(index!=-1){
+			double prob = 0.;
+			for(int q = 0; q < EQCLASS; q++){
+				prob += (suf_emission[{index,q}]*emission[tg][q]);
+			}			
+			return prob;
+		}
+	}
+	return (1.0/TAGNUM);
 }
 
 Array<double> delta;
@@ -76,7 +98,7 @@ void POStag3(vector<string> const& sentence, vector<int>& tag){
 	// t = 0
 	int index = wordIndex(sentence[0]);
 	for(int i = 0; i < TAGNUM; i++){
-		double emi_i = index==-1 ? (1.0/TAGNUM) : emission[i][index];		
+		double emi_i = index==-1 ? oovEmission(sentence[0], i) : emission[i][index];	
 		for(int j = 0; j < TAGNUM; j++)
 			delta[{i,j,0}] = emi_i==0 ? -inf : ( log(initial[i]) + log(emi_i) );
 	}
@@ -86,21 +108,21 @@ void POStag3(vector<string> const& sentence, vector<int>& tag){
 		index = wordIndex(sentence[1]);
 		for(int i = 0; i < TAGNUM; i++){
 			for(int j = 0; j < TAGNUM; j++){
-				double emi_i = index==-1 ? (1.0/TAGNUM) : emission[i][index];
+				double emi_i = index==-1 ? oovEmission(sentence[1], i) : emission[i][index];
 				if(emi_i==0 || transition[j][i]==0)
 					delta[{i,j,1}] = -inf;
 				else
 					delta[{i,j,1}] = delta[{j,0,0}] + log(transition[j][i]) + log(emi_i);
 			}
 		}
-
 		// t > 0
 		for(int t = 2; t < slen;t++){
 			index = wordIndex(sentence[t]);
 
 			for(int i = 0; i < TAGNUM; i++){
 				for(int j = 0; j < TAGNUM; j++){
-					double emi_i = index==-1 ? (1.0/TAGNUM) : emission[i][index];
+					double emi_i = index==-1 ? oovEmission(sentence[t], i) : emission[i][index];
+					
 					phi[{i,j,t}] = -1;
 					if(emi_i==0){
 						delta[{i,j,t}] = -inf;
@@ -146,6 +168,47 @@ void POStag3(vector<string> const& sentence, vector<int>& tag){
 	}
 }
 
+void tokenizer(string const& sentence, vector<string>& tokenized){
+	const string common_ch = "~!@#$%%^&*()_+=`\\/.,<>?\":;";// "-" might be hyphenized text, and ' and . might be abreviation
+	int slen = sentence.size();
+	int tlen = 0;
+	int c_at;
+	for(int i = 0; i < slen; i++){
+		char c = sentence[i];
+		if(common_ch.find(c) != string::npos){
+			if(tlen){
+				// process sub-word tokenizing TODO
+				string word = sentence.substr(i-tlen, tlen);
+				c_at = word.find('\'');
+				if(c_at != string::npos){
+					tokenized.push_back(word.substr(0, c_at));
+					word.erase(0, c_at);
+				}				
+				tokenized.push_back(word);
+			}
+			tokenized.push_back(string(1, c));
+			tlen = 0;
+		}else if(tlen && (c == ' ' || c == '\n' || c == '\t' || c == '\r' || i == slen - 1)){
+			// process sub-word tokenizing TODO
+			string word = sentence.substr(i-tlen, i==slen-1 ? tlen + 1 : tlen);
+			c_at = word.find('\'');
+			if(c_at != string::npos){
+				tokenized.push_back(word.substr(0, c_at));
+				word.erase(0, c_at);
+			}				
+			tokenized.push_back(word);
+			tlen = 0;
+		}
+		else
+			tlen++;
+	}
+
+	// Capitalization
+	if(tokenized[0][0]>='A' && tokenized[0][0]<='Z') 
+		tokenized[0][0] = tolower(tokenized[0][0]);
+}
+
+
 
 void load_model(char* name){
 	char buffer[MAXWDLEN];
@@ -156,18 +219,18 @@ void load_model(char* name){
 	fscanf(fp, "%s", buffer);
 	assert(strncmp(buffer, "#initial", 8)==0);
 	fscanf(fp, "%d", &TAGNUM);
-	// assert(d==TAGNUM);
+	cerr << "[Info] Tagset Size:\t" << TAGNUM << endl;
+
 	for(int i = 0; i < TAGNUM; i++){
 		memset(buffer, 0, MAXWDLEN);
 		fscanf(fp, "%s", buffer);
 		strncpy(tagname[i], buffer, MAXTAGLEN);
 		string tmp = buffer;
-		tag_map[tmp] = i;
+		// tag_map[tmp] = i;
 	}
 	for(int i = 0; i < TAGNUM; i++){		
 		fscanf(fp, "%lf", &initial[i]);
 	}
-	// fprintf(stderr, "[DEBUG] inital done.\n");
 
 	fscanf(fp, "%s", buffer);
 	assert(strncmp(buffer, "#transition", 11)==0);
@@ -177,7 +240,6 @@ void load_model(char* name){
 			fscanf(fp, "%lf", &transition[i][j]);
 		}
 	}
-	// fprintf(stderr, "[DEBUG] transition done.\n");
 
 	fscanf(fp, "%s", buffer);
 	assert(strncmp(buffer, "#trigram", 8)==0);
@@ -189,20 +251,10 @@ void load_model(char* name){
 		}
 	}
 
-	fscanf(fp, "%s", buffer);
-	assert(strncmp(buffer, "#vocab", 6)==0);
-	fscanf(fp, "%s", buffer);
-	while(strncmp(buffer, "#emission", 9)!=0){
-		fscanf(fp, "%d", &d);
-		string vocab(buffer);
-		// dictionary.push_back(vocab);
-		EqvClass.push_back(d);
-		dict_map[vocab] = EqvClass.size()-1;
-		fscanf(fp, "%s", buffer);
-	}
-	cout << "[Info] Dictionary Size:\t" << EqvClass.size() << endl;
-
-	int EQCLASS;
+	fscanf(fp, "%s", buffer);	
+	assert(strncmp(buffer, "#emission", 9)==0);
+	
+	// int EQCLASS;
 	fscanf(fp, "%d", &EQCLASS);
 	for(int i = 0; i < TAGNUM; i++){
 		emission[i] = new double[EQCLASS]();		
@@ -210,6 +262,67 @@ void load_model(char* name){
 			fscanf(fp, "%lf", &emission[i][j]);
 		}
 	}
+	cout << "[Info] Equivalent Classes:\t" << EQCLASS << endl;
+
+	fscanf(fp, "%s", buffer);
+	assert(strncmp(buffer, "#vocab_freq_Eqv", 15)==0);
+	int freq;
+
+	vector<vector<int> > f_S_Eqv;
+	int sum_of_Suffix[EQCLASS];
+	memset(sum_of_Suffix, 0, EQCLASS*sizeof(int));
+	while(fscanf(fp, "%s %d %d", buffer, &freq, &d)!=EOF){
+		string vocab(buffer);
+		dict_map[vocab] = d;
+
+		if(freq < RARETHRES){
+			for(int i = 0; i < MAXSUFFIX && i < vocab.size(); i++){
+				string suf = vocab.substr(vocab.size()-1-i,i+1);
+				int suf_index = suffIndex(suf);
+				if(suf_index==-1){					
+					f_S_Eqv.push_back(vector<int>(EQCLASS, 0));
+					suf_index = f_S_Eqv.size() - 1;
+					suffix_map[suf] = suf_index;
+				}
+				f_S_Eqv[suf_index][d]++;
+				sum_of_Suffix[d]++;
+			}
+		}
+	}
+	cout << "[Info] Dictionary Size:\t" << dict_map.size() << endl;
+	cout << "[Info] Suffix Map Size:\t" << suffix_map.size() << endl;
+
+	// suffix smoothing
+	suf_emission.reshape({(int)suffix_map.size(), EQCLASS});
+
+	for(int s = 0; s < suffix_map.size(); s++){
+		for(int q = 0; q < EQCLASS; q++){
+			suf_emission[{s, q}] = sum_of_Suffix[q] ? ((double)f_S_Eqv[s][q])/(double)sum_of_Suffix[q] : 0.;
+		}
+		// delete[] f_S_Eqv[s];
+	}
+
+	// fscanf(fp, "%s", buffer);
+	// assert(strncmp(buffer, "#vocab", 6)==0);
+	// fscanf(fp, "%s", buffer);
+	// while(strncmp(buffer, "#emission", 9)!=0){
+	// 	fscanf(fp, "%d", &d);
+	// 	string vocab(buffer);
+	// 	// dictionary.push_back(vocab);
+	// 	EqvClass.push_back(d);
+	// 	dict_map[vocab] = EqvClass.size()-1;
+	// 	fscanf(fp, "%s", buffer);
+	// }
+	// cout << "[Info] Dictionary Size:\t" << EqvClass.size() << endl;
+
+	// int EQCLASS;
+	// fscanf(fp, "%d", &EQCLASS);
+	// for(int i = 0; i < TAGNUM; i++){
+	// 	emission[i] = new double[EQCLASS]();		
+	// 	for(int j = 0; j < EQCLASS; j++){
+	// 		fscanf(fp, "%lf", &emission[i][j]);
+	// 	}
+	// }
 }
 
 

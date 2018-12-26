@@ -4,7 +4,7 @@ run: model.txt tag
 model.txt:
 	python3 makemodel.py
 	# ./genmodel
-tag: tag.cpp
-	g++ tag.cpp -o tag
+tag: tag.cpp Array.h
+	g++ -std=c++17 tag.cpp -o tag
 genmodel: genmodel.cpp
 	g++ genmodel.cpp -o genmodel
