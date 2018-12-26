@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 tagged_sentences = []
 
-from nltk.corpus import masc_tagged as corpus
-tagged_sentences += corpus.tagged_sents();
+# from nltk.corpus import masc_tagged as corpus
+# tagged_sentences += corpus.tagged_sents();
 
 
 from nltk.corpus import treebank as corpus
@@ -76,8 +76,23 @@ for sentence in tagged_sentences:
 			if i > 1:
 				pptag = sentence[i-2][1]
 		process_token(word, tag, ptag, pptag);
+# def cut(w_t):
+# 	cut = w_t.rfind('_')
+# 	return w_t[:cut], w_t[cut+1:]
+# with open("browntag_nolines.txt", "r") as fobj:
+# 	for sentence in fobj:		
+# 		tokens = sentence.strip().split()
+# 		tagged_sentences.append(tokens)
+# 		for i, word_tag in enumerate(tokens):
+# 			word, tag = cut(word_tag)
 
-# print(longest)
+# 			ptag, pptag = None, None
+# 			if i > 0:
+# 				trash, ptag = cut(tokens[i-1])
+# 				if i > 1:
+# 					trash, pptag = cut(tokens[i-2])
+# 			process_token(word, tag, ptag, pptag);
+
 best100 = sorted(wordcount, key=lambda x: wordcount[x])[-100:]
 
 # output probability Model
@@ -97,12 +112,28 @@ for tag in initial:
 
 file.write("\n#transition \n")
 # transition probs
+lbd = [0, 0]
+for t1 in transition:
+	for t2 in transition[t1]:		
+		fq = transition[t1][t2]
+		p1 = (fq - 1)/(initial[t1]-1) if initial[t1]>1 else 0
+		p2 = (initial[t2]-1)/(corpus_N-1) if corpus_N>1 else 0
+		mx = p1 if p1 > p2 else p2
+		if mx == p1:
+			lbd[1] += fq
+		elif mx == p2:
+			lbd[0] += fq
+sumlbd = sum(lbd)
+
 for ptag in initial:
 	denom = sum(transition[ptag].values())
-	for tag in initial: 
+	for tag in initial:
 		domi = 0 if tag not in transition[ptag] else transition[ptag][tag]
 		transition[ptag][tag] = domi
-		file.write("{:.9f} ".format(0 if denom==0 else (domi / denom)))
+		bi = 0 if denom==0 else (domi / denom)
+		term1 = lbd[0]*initial[tag]/corpus_N
+		term2 = lbd[1]*bi
+		file.write("{:.9f} ".format((term1+term2)/sumlbd))
 	file.write("\n")
 
 file.write("\n#trigram \n")
@@ -124,7 +155,6 @@ for key in trigram:
 		elif mx == p3:
 			lbd[0] += fq
 sumlbd = sum(lbd)
-# print(lbd)
 
 for pptag in initial:
 	for ptag in initial:
@@ -143,19 +173,6 @@ for pptag in initial:
 				print(lbd, initial[tag], transition[ptag][tag])
 		file.write("\n")
 
-# file.write("\n#vocab \n")
-# create equivalence classes
-# Eqv = []
-# for word in words:
-# 	cl = words[word]
-# 	if word in best100:
-# 		Eqv.append(word)
-# 		file.write("{} {} ".format(word,  len(Eqv)-1))
-# 		continue
-# 	elif cl not in Eqv:
-# 		Eqv.append(cl)
-# 	file.write("{} {} ".format(word,  Eqv.index(cl)))
-# file.write("\n")
 Eqv = []
 for word in words:	
 	if word in best100:
@@ -171,14 +188,19 @@ for sentence in tagged_sentences:
 		tag = tprocess(tag)
 		if tag not in emission:
 			emission[tag] = [0]*len(Eqv)
-		
-		# if word in best100:
-		# 	eqclass = Eqv.index(word)
-		# else:
-		# 	eqclass = Eqv.index(words[word])
 		eqclass = Eqv.index(words[word])
 		
 		emission[tag][eqclass] += 1
+# for tokens in tagged_sentences:
+# 	for word_tag in tokens:
+# 		word, tag = cut(word_tag)
+# 		tag = tprocess(tag)
+# 		if tag not in emission:
+# 			emission[tag] = [0]*len(Eqv)
+# 		eqclass = Eqv.index(words[word])
+		
+# 		emission[tag][eqclass] += 1
+		
 
 
 file.write("\n#emission \n")
