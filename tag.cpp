@@ -1,46 +1,27 @@
 #include <cstdio>
 #include <iostream>
+#include <fstream>
 #include <unordered_map>
 #include <cstring>
 #include <string>
 #include <cassert>
+#include <array>
 #include <vector>
 #include <limits>
 #include <cmath>
-#include <algorithm>
+// #include <algorithm>
 #include "Array.h"
 
-// #define TAGNUM 60
-// #define MAXTAGNUM 200 
-// #define MAXWDLEN 200
-// #define MAXTAGLEN 10
-// #define RARETHRES 10
-// #define MAXSUFFIX 2
-constexpr int MAXTAGNUM = 62; 
-constexpr int MAXWDLEN = 200;
-constexpr int MAXTAGLEN = 10;
+constexpr int MAXTAGNUM = 62;
 constexpr int RARETHRES = 10;
-constexpr int MAXSUFFIX = 5;
+constexpr int MAXSUFFIX = 10;
 constexpr int BEAMSIZE = 100;
-
+constexpr double inf = std::numeric_limits<double>::infinity();
 
 using namespace std;
+using Pair = std::array<int, 2>;
 
-
-unordered_map<string, int> dict_map;
-// unordered_map<string, int> tag_map;
-unordered_map<string, int> suffix_map;
-Array<double> suf_emission;
-// vector<int> EqvClass;
-char tagname[MAXTAGNUM][MAXTAGLEN]={};
-double initial[MAXTAGNUM];
-double transition[MAXTAGNUM][MAXTAGNUM];
-double trigram[MAXTAGNUM][MAXTAGNUM][MAXTAGNUM];
-double* emission[MAXTAGNUM];
-
-int TAGNUM;
-int EQCLASS;
-const double inf = std::numeric_limits<double>::infinity();
+vector<string> tagname;
 
 void load_model(char* name);
 int wordIndex(string const& word);
@@ -52,6 +33,7 @@ int main(int argc, char** argv){
 	load_model(argv[1]);
 	string sentence;
 	while(getline(cin, sentence)){
+		// cerr << "input received." << endl;
 		// if(sentence.size()<2) continue;
 		vector<string> tokenized;
 		tokenizer(sentence, tokenized);
@@ -64,13 +46,24 @@ int main(int argc, char** argv){
 		POStag3(tokenized, tags);
 		tokenized[0] = Cap;
 		for(int i = 0; i < tags.size(); i++){
-			// cout << tokenized[i] << "(" << tagname[tags[i]] << ") ";
 			cout << tokenized[i] << "/" << tagname[tags[i]] << " ";
 		}
 		cout << endl;
 	}
 }
 
+
+
+unordered_map<string, int> dict_map;
+unordered_map<string, int> suffix_map;
+double initial[MAXTAGNUM];
+double transition[MAXTAGNUM][MAXTAGNUM];
+double trigram[MAXTAGNUM][MAXTAGNUM][MAXTAGNUM];
+double* emission[MAXTAGNUM];
+DyArray<double> suf_emission;
+
+int TAGNUM;
+int EQCLASS;
 
 int wordIndex(string const& word){
 	auto iter = dict_map.find(word);
@@ -92,10 +85,11 @@ double oovEmission(string const& word, int tg){
 	return (1.0/TAGNUM);
 }
 
-Array<double> delta;
-Array<int> phi;
-Kmax<double, int> beamspace(BEAMSIZE);
-vector<int> beam;
+
+DyArray<double> delta;
+DyArray<int> phi;
+Kmax<double, Pair> beamspace(BEAMSIZE);
+vector<Pair> beam;
 void POStag3(vector<string> const& sentence, vector<int>& tag){
 	int slen = sentence.size();
 	delta.reshape({TAGNUM, TAGNUM, slen});
@@ -107,7 +101,7 @@ void POStag3(vector<string> const& sentence, vector<int>& tag){
 	// t = 0
 	int index = wordIndex(sentence[0]);
 	for(int i = 0; i < TAGNUM; i++){
-		double emi_i = index==-1 ? oovEmission(sentence[0], i) : emission[i][index];	
+		double emi_i = index==-1 ? oovEmission(sentence[0], i) : emission[i][index];
 		if(emi_i>0){
 			for(int j = 0; j < TAGNUM; j++){
 				delta[{i,j,0}] = ( log(initial[i]) + log(emi_i) );
@@ -125,7 +119,7 @@ void POStag3(vector<string> const& sentence, vector<int>& tag){
 				if(emi_i>0 && transition[j][i]>0){
 					delta[{i,j,1}] = delta[{j,0,0}] + log(transition[j][i]) + log(emi_i);	
 				}
-				beamspace.insert(delta[{i,j,1}], i*TAGNUM+j);
+				beamspace.insert(delta[{i,j,1}], {i,j});
 			}
 		}
 
@@ -139,7 +133,7 @@ void POStag3(vector<string> const& sentence, vector<int>& tag){
 			for(int i = 0; i < TAGNUM; i++){
 				double emi_i = index==-1 ? oovEmission(sentence[t], i) : emission[i][index];
 				for(auto& pair : beam){
-					int j = pair/TAGNUM, k = pair%TAGNUM;					
+					int j = pair[0], k = pair[1];					
 
 					if(emi_i > 0 && trigram[k][j][i] > 0){
 						double logprob = delta[{j,k,t-1}] + log(trigram[k][j][i]) + log(emi_i);
@@ -148,7 +142,7 @@ void POStag3(vector<string> const& sentence, vector<int>& tag){
 							phi[{i,j,t}] = k;							
 						}
 					}
-					beamspace.insert(delta[{i,j,t}], i*TAGNUM+j);
+					beamspace.insert(delta[{i,j,t}], {i,j});
 				}
 			}
 		}
@@ -157,18 +151,9 @@ void POStag3(vector<string> const& sentence, vector<int>& tag){
 	// find best tail
 	int best_tail_i = -1, best_tail_j = -1;
 	double best_prob = -inf;
-	// for(int i = 0; i < TAGNUM; i++){			
-	// 	for(int j = 0; j < TAGNUM; j++){
-	// 		if(delta[{i,j,slen-1}]>best_prob){
-	// 			best_tail_i = i;
-	// 			best_tail_j = j;
-	// 			best_prob = delta[{i,j,slen-1}];
-	// 		}
-	// 	}
-	// }
 	beamspace.extract(beam);
 	for(auto& pair : beam){
-		int i = pair/TAGNUM, j = pair%TAGNUM;					
+		int i = pair[0], j = pair[1];					
 		if(delta[{i,j,slen-1}]>best_prob){
 			best_tail_i = i;
 			best_tail_j = j;
@@ -259,67 +244,63 @@ void tokenizer(string const& sentence, vector<string>& tokenized){
 
 
 void load_model(char* name){
-	char buffer[MAXWDLEN];
-	double p;
-	int d;
-	FILE* fp = fopen(name, "rt");
+	ifstream source(name, ifstream::in);
+	string buffer;
 
-	fscanf(fp, "%s", buffer);
-	assert(strncmp(buffer, "#initial", 8)==0);
-	fscanf(fp, "%d", &TAGNUM);
+	source >> buffer;
+	assert(buffer == "#initial");
+	source >> TAGNUM;
 	cerr << "[Info] Tagset Size: " << TAGNUM << endl;
-
+	tagname.resize(TAGNUM);
+	
 	for(int i = 0; i < TAGNUM; i++){
-		memset(buffer, 0, MAXWDLEN);
-		fscanf(fp, "%s", buffer);
-		strncpy(tagname[i], buffer, MAXTAGLEN);
-		string tmp = buffer;
-		// tag_map[tmp] = i;
+		source >> tagname[i];
 	}
-	for(int i = 0; i < TAGNUM; i++){		
-		fscanf(fp, "%lf", &initial[i]);
+	for(int i = 0; i < TAGNUM; i++){
+		source >> initial[i];
 	}
 
-	fscanf(fp, "%s", buffer);
-	assert(strncmp(buffer, "#transition", 11)==0);
+	source >> buffer;
+	assert(buffer == "#transition");
 
 	for(int i = 0; i < TAGNUM; i++){		
 		for(int j = 0; j < TAGNUM; j++){		
-			fscanf(fp, "%lf", &transition[i][j]);
+			source >> transition[i][j];
 		}
 	}
 
-	fscanf(fp, "%s", buffer);
-	assert(strncmp(buffer, "#trigram", 8)==0);
+	source >> buffer;
+	assert(buffer == "#trigram");
+
 	for(int i = 0; i < TAGNUM; i++){		
 		for(int j = 0; j < TAGNUM; j++){		
 			for(int k = 0; k < TAGNUM; k++){		
-				fscanf(fp, "%lf", &trigram[i][j][k]);
+				source >> trigram[i][j][k];
 			}
 		}
 	}
 
-	fscanf(fp, "%s", buffer);	
-	assert(strncmp(buffer, "#emission", 9)==0);
+	source >> buffer;
+	assert(buffer == "#emission");
 	
-	// int EQCLASS;
-	fscanf(fp, "%d", &EQCLASS);
+	source >> EQCLASS;
 	for(int i = 0; i < TAGNUM; i++){
 		emission[i] = new double[EQCLASS]();		
 		for(int j = 0; j < EQCLASS; j++){
-			fscanf(fp, "%lf", &emission[i][j]);
+			source >> emission[i][j];
 		}
 	}
 	cerr << "[Info] Equivalent Classes: " << EQCLASS << endl;
 
-	fscanf(fp, "%s", buffer);
-	assert(strncmp(buffer, "#vocab_freq_Eqv", 15)==0);
+	source >> buffer;
+	assert(buffer == "#vocab_freq_Eqv");
 	int freq;
 
 	vector<vector<int> > f_S_Eqv;
-	int sum_of_Suffix[EQCLASS];
-	memset(sum_of_Suffix, 0, EQCLASS*sizeof(int));
-	while(fscanf(fp, "%s %d %d", buffer, &freq, &d)!=EOF){
+	vector<int> sum_of_Suffix(EQCLASS, 0);
+	int d;
+	while(!source.eof()){
+		source >> buffer >> freq >> d;
 		string vocab(buffer);
 		dict_map[vocab] = d;
 
@@ -353,150 +334,5 @@ void load_model(char* name){
 			}
 			suf_emission[{tg, s}] = prob;
 		}		
-	}
-}
-
-void POStag3_old(vector<string> const& sentence, vector<int>& tag){
-	int slen = sentence.size();
-	delta.reshape({TAGNUM, TAGNUM, slen});
-	phi.reshape({TAGNUM, TAGNUM, slen});
-
-	// t = 0
-	int index = wordIndex(sentence[0]);
-	for(int i = 0; i < TAGNUM; i++){
-		double emi_i = index==-1 ? oovEmission(sentence[0], i) : emission[i][index];	
-		for(int j = 0; j < TAGNUM; j++)
-			delta[{i,j,0}] = emi_i==0 ? -inf : ( log(initial[i]) + log(emi_i) );
-	}
-
-	// t = 1
-	if(slen > 1){
-		index = wordIndex(sentence[1]);
-		for(int i = 0; i < TAGNUM; i++){
-			for(int j = 0; j < TAGNUM; j++){
-				double emi_i = index==-1 ? oovEmission(sentence[1], i) : emission[i][index];
-				if(emi_i==0 || transition[j][i]==0)
-					delta[{i,j,1}] = -inf;
-				else
-					delta[{i,j,1}] = delta[{j,0,0}] + log(transition[j][i]) + log(emi_i);
-			}
-		}
-		// t > 0
-		for(int t = 2; t < slen;t++){
-			index = wordIndex(sentence[t]);
-
-			for(int i = 0; i < TAGNUM; i++){
-				for(int j = 0; j < TAGNUM; j++){
-					double emi_i = index==-1 ? oovEmission(sentence[t], i) : emission[i][index];
-					
-					phi[{i,j,t}] = -1;
-					if(emi_i==0){
-						delta[{i,j,t}] = -inf;
-					}
-					else{
-						double logprob = -inf;
-						for(int k = 0; k < TAGNUM; k++){
-							if(trigram[k][j][i]<=0){ cerr << "bad trigram." <<endl; exit(1);};
-							double tmp = delta[{j,k,t-1}] + log(trigram[k][j][i]);
-							if(tmp > logprob){
-								logprob = tmp;
-								phi[{i,j,t}] = k;
-							}
-						}
-						delta[{i,j,t}] = logprob + log(emi_i);
-					}
-				}
-			}		
-		}
-	}
-
-	// find best tail
-	int best_tail_i = -1, best_tail_j = -1;
-	double best_prob = -inf;
-	for(int i = 0; i < TAGNUM; i++){			
-		for(int j = 0; j < TAGNUM; j++){
-			// cout << "p=" << delta[i][j][sentence.size()-1] << " i=" << i << " j=" << j << endl;
-			if(delta[{i,j,slen-1}]>best_prob){
-				best_tail_i = i;
-				best_tail_j = j;
-				best_prob = delta[{i,j,slen-1}];
-			}
-		}
-	}
-
-	// back tracking	
-	for(int t = slen-1; t >= 1; t--){
-		tag[t] = best_tail_i;
-		tag[t-1] = best_tail_j;
-		int tmp = phi[{best_tail_i,best_tail_j,t}];
-		best_tail_i = best_tail_j;
-		best_tail_j = tmp;
-	}
-}
-
-void POStag(vector<string> const& sentence, vector<int>& tag){
-	double* delta[TAGNUM];
-	int* phi[TAGNUM];
-	for(int i = 0; i < TAGNUM; i++){
-		delta[i] = new double[sentence.size()];
-		phi[i] = new int[sentence.size()];
-	}
-
-	// t = 0
-	int index = wordIndex(sentence[0]);	
-	for(int i = 0; i < TAGNUM; i++){
-		if(index==-1){
-			// assume uniform distribution
-			delta[i][0] = log(initial[i]) + log(1.0/TAGNUM);
-		}
-		else{
-			delta[i][0] = emission[i][index]==0 ? -inf : ( log(initial[i]) + log(emission[i][index]) );
-		}
-	}
-
-	// t > 0
-	for(int t = 1; t < sentence.size();t++){
-		index = wordIndex(sentence[t]);
-		if(index==-1){
-			cerr << sentence[t] << " not in dictionary." << endl;
-		}
-		for(int i = 0; i < TAGNUM; i++){			
-			phi[i][t] = -1;
-			double logprob = -inf;
-			if(index==-1 || emission[i][index]){					
-				for(int j = 0; j < TAGNUM; j++){
-					if(transition[j][i]==0) continue;
-					double tmp = delta[j][t-1] + log(transition[j][i]);
-					if(tmp > logprob){
-						logprob = tmp;
-						phi[i][t] = j;
-					}
-				}
-				logprob += index==-1 ? log(1.0/TAGNUM) : log(emission[i][index]);
-			}		
-			delta[i][t] = logprob;
-		}
-	}
-
-	// find best tail
-	int best_tail = -1;
-	double best_prob = -inf;
-	for(int i = 0; i < TAGNUM; i++){			
-		if(delta[i][sentence.size()-1]>best_prob){
-			best_tail = i;
-			best_prob = delta[i][sentence.size()-1];
-		}
-	}
-
-	// back tracking	
-	for(int i = sentence.size()-1; i >= 0; i--){
-		tag[i] = best_tail;
-		best_tail = phi[best_tail][i];
-	}
-
-
-	for(int i = 0; i < TAGNUM; i++){
-		delete[] delta[i];
-		delete[] phi[i];
 	}
 }

@@ -8,7 +8,7 @@ untagged_sentences += corpus.sents()
 data = open("testdata.txt", "wt")
 res = open("answer.txt", "wt")
 
-amount = 1000
+amount = 500
 tru_amount = len(untagged_sentences)
 print("[Data] Extracted {} out of {} ({:.2f}%)".format(amount, tru_amount, amount/tru_amount*100))
 

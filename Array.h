@@ -1,9 +1,9 @@
 #include <vector>
 #include <numeric>
-#include <cassert>
 #include <utility>
 
 using namespace std;
+
 
 template <class T1, class T2>
 class
@@ -14,15 +14,7 @@ private:
 	int _capacity;
 	vector<T1> _key;
 	vector<T2> _data;
-	// void swap(int a, int b){
-		
-	// 	T1 tmpk = _key[a];
-	// 	T2 tmpd = _data[a];
-	// 	_key[a] = _key[b];
-	// 	_data[a] = _data[b];		
-	// 	_key[b] = tmpk;
-	// 	_data[b] = tmpd;
-	// }
+
 	void UpHeap(){
 		int i = _nelem - 1;
 		while(i > 0){
@@ -30,7 +22,6 @@ private:
 			if(_key[p] > _key[i]){
 				std::swap (_key[p], _key[i]);
 				std::swap (_data[p], _data[i]);
-				// this.swap(p, i);
 				i = p;
 			}else break;
 		}
@@ -44,13 +35,15 @@ private:
 			if(_key[chd] < _key[i]){
 				std::swap (_key[chd], _key[i]);
 				std::swap (_data[chd], _data[i]);
-				// swap(chd, i);
 				i = chd;
 			}else break;
 		}
 	}
 public:
-		Kmax(int size) : _nelem(0),_capacity(size), _key(size, 0), _data(size, T2(0)) {
+		Kmax(int size) : _nelem(0),_capacity(size), _key(size, 0), _data(size, T2()) {
+
+		}
+		~Kmax(){
 
 		}
 		bool insert(T1 const& key, T2 const& data){
@@ -83,7 +76,7 @@ public:
 
 template <class T>
 class
-Array
+DyArray
 {
 	vector<T> _data;
 	int _nelem;
@@ -91,12 +84,12 @@ Array
 	vector<int> _shape;
 
 	public:
-		Array()
+		DyArray()
 			: _nelem(0)
 		{
 			
 		}
-		Array(const std::vector<int>& shape)
+		DyArray(const std::vector<int>& shape)
 			: _nelem(std::accumulate(shape.begin(), shape.end(), 1, multiplies<int>())),
 			_shape(shape)
 		{
@@ -109,7 +102,7 @@ Array
 			}
 		}
 
-		~Array()
+		~DyArray()
 		{
 		}
 
