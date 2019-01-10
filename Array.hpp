@@ -1,9 +1,9 @@
+#ifndef _ARRAY_HPP_
+#define _ARRAY_HPP_
+
 #include <vector>
 #include <numeric>
 #include <utility>
-
-using namespace std;
-
 
 template <class T1, class T2>
 class
@@ -12,8 +12,8 @@ Kmax
 private:
 	int _nelem;
 	int _capacity;
-	vector<T1> _key;
-	vector<T2> _data;
+	std::vector<T1> _key;
+	std::vector<T2> _data;
 
 	void UpHeap(){
 		int i = _nelem - 1;
@@ -60,28 +60,28 @@ public:
 				return true;
 			}else return false;
 		}
-		void extract(vector<T2>& out){
-			out = vector<T2>(_data.begin(), _data.begin()+_nelem);
+		void extract(std::vector<T2>& out){
+			out = std::vector<T2>(_data.begin(), _data.begin()+_nelem);
 		}
 		void clear(){
 			_nelem = 0;
 		}
-		void print(){
-			for(auto const& x : _key){
-				cerr << x << " ";
-			}
-			cerr << endl;
-		}
+		// void print(){
+		// 	for(auto const& x : _key){
+		// 		cerr << x << " ";
+		// 	}
+		// 	cerr << endl;
+		// }
 };
 
 template <class T>
 class
 DyArray
 {
-	vector<T> _data;
+	std::vector<T> _data;
 	int _nelem;
-	vector<int> _access;
-	vector<int> _shape;
+	std::vector<int> _access;
+	std::vector<int> _shape;
 
 	public:
 		DyArray()
@@ -90,7 +90,7 @@ DyArray
 			
 		}
 		DyArray(const std::vector<int>& shape)
-			: _nelem(std::accumulate(shape.begin(), shape.end(), 1, multiplies<int>())),
+			: _nelem(std::accumulate(shape.begin(), shape.end(), 1, std::multiplies<int>())),
 			_shape(shape)
 		{
 			_data.resize(_nelem, 0);
@@ -106,7 +106,7 @@ DyArray
 		{
 		}
 
-		T& operator[](const vector<int>& indices)
+		T& operator[](const std::vector<int>& indices)
 		{
 			int ptr = 0;
 			for(int i = 0; i < _access.size(); i++)
@@ -115,16 +115,16 @@ DyArray
 			return _data[ptr];
 		}
 
-		void reshape(const vector<int>& new_shape)
+		void reshape(const std::vector<int>& new_shape)
 		{
-			int newsz = std::accumulate(new_shape.begin(), new_shape.end(), 1, multiplies<int>());
+			int newsz = std::accumulate(new_shape.begin(), new_shape.end(), 1, std::multiplies<int>());
 			if(newsz > _data.size()){
 				_data.resize(newsz, 0);
 			}
 			_nelem = newsz;
 
 			int newsz2 = new_shape.size();
-			_shape = vector<int>(new_shape);
+			_shape = std::vector<int>(new_shape);
 			_access.resize(newsz2, 0);
 			int val = 1;
 			for(int i = newsz2 - 1; i >= 0; i--){				
@@ -142,3 +142,4 @@ DyArray
 			return _nelem;
 		}
 };
+#endif

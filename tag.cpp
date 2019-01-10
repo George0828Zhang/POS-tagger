@@ -1,16 +1,15 @@
-#include <cstdio>
 #include <iostream>
 #include <fstream>
 #include <unordered_map>
-#include <cstring>
 #include <string>
 #include <cassert>
 #include <array>
 #include <vector>
-#include <limits>
-#include <cmath>
-// #include <algorithm>
-#include "Array.h"
+#include <limits>// for inf
+#include <cmath>// for log
+#include <iomanip>// for set precision
+#include "Array.hpp"
+#include "tag.hpp"
 
 constexpr int MAXTAGNUM = 62;
 constexpr int RARETHRES = 10;
@@ -18,44 +17,10 @@ constexpr int MAXSUFFIX = 10;
 constexpr int BEAMSIZE = 100;
 constexpr double inf = std::numeric_limits<double>::infinity();
 
-using namespace std;
 using Pair = std::array<int, 2>;
 
-vector<string> tagname;
-
-void load_model(char* name);
-int wordIndex(string const& word);
-void POStag3(vector<string> const& sentence, vector<int>& tag);
-void tokenizer(string const& sentence, vector<string>& tokenized);
-
-int main(int argc, char** argv){
-	assert(argc==2);
-	load_model(argv[1]);
-	string sentence;
-	while(getline(cin, sentence)){
-		// cerr << "input received." << endl;
-		// if(sentence.size()<2) continue;
-		vector<string> tokenized;
-		tokenizer(sentence, tokenized);
-		// Capitalization
-		string Cap(tokenized[0]);
-		if(tokenized[0][0]>='A' && tokenized[0][0]<='Z') 
-			tokenized[0][0] = tolower(tokenized[0][0]);
-		// POS tagging
-		vector<int> tags(tokenized.size());
-		POStag3(tokenized, tags);
-		tokenized[0] = Cap;
-		for(int i = 0; i < tags.size(); i++){
-			cout << tokenized[i] << "/" << tagname[tags[i]] << " ";
-		}
-		cout << endl;
-	}
-}
-
-
-
-unordered_map<string, int> dict_map;
-unordered_map<string, int> suffix_map;
+std::unordered_map<std::string, int> dict_map;
+std::unordered_map<std::string, int> suffix_map;
 double initial[MAXTAGNUM];
 double transition[MAXTAGNUM][MAXTAGNUM];
 double trigram[MAXTAGNUM][MAXTAGNUM][MAXTAGNUM];
@@ -65,18 +30,18 @@ DyArray<double> suf_emission;
 int TAGNUM;
 int EQCLASS;
 
-int wordIndex(string const& word){
+int wordIndex(std::string const& word){
 	auto iter = dict_map.find(word);
 	return iter==dict_map.end() ? -1 : iter->second;
 }
-int suffIndex(string const& word){
+int suffIndex(std::string const& word){
 	auto iter = suffix_map.find(word);
 	return iter==suffix_map.end() ? -1 : iter->second;
 }
 
-double oovEmission(string const& word, int tg){
+double oovEmission(std::string const& word, int tg){
 	int wlen = word.size();
-	for(int l = min(MAXSUFFIX, wlen); l > 0; l--){
+	for(int l = std::min(MAXSUFFIX, wlen); l > 0; l--){
 		int index = suffIndex(word.substr(wlen-l, l));
 		if(index!=-1){
 			return suf_emission[{tg, index}];
@@ -89,8 +54,8 @@ double oovEmission(string const& word, int tg){
 DyArray<double> delta;
 DyArray<int> phi;
 Kmax<double, Pair> beamspace(BEAMSIZE);
-vector<Pair> beam;
-void POStag3(vector<string> const& sentence, vector<int>& tag){
+std::vector<Pair> beam;
+void POStag3(std::vector<std::string> const& sentence, std::vector<int>& tag){
 	int slen = sentence.size();
 	delta.reshape({TAGNUM, TAGNUM, slen});
 	phi.reshape({TAGNUM, TAGNUM, slen});
@@ -173,84 +138,399 @@ void POStag3(vector<string> const& sentence, vector<int>& tag){
 	}
 }
 
-void tokenizer2(string const& sentence, vector<string>& tokenized){
-	const string common_ch = "~!@#$%%^&*()_+=`\\/.,<>?\":;";
-	// "-" might be hyphenized text, and ' and . might be abreviation
-	int slen = sentence.size();
-	int tlen = 0;
-	int c_at;
-	for(int i = 0; i < slen; i++){
-		char c = sentence[i];
-		if(common_ch.find(c) != string::npos){
-			if(tlen){
-				// process sub-word tokenizing TODO
-				string word = sentence.substr(i-tlen, tlen);
-				c_at = word.find('\'');
-				if(c_at != string::npos && c_at != 0){
-					tokenized.push_back(word.substr(0, c_at));
-					word.erase(0, c_at);
-				}				
-				tokenized.push_back(word);
+
+
+
+
+
+DyArray<float> alpha;
+DyArray<float> beta;
+DyArray<float> Gamma;
+DyArray<float> epsilon;
+DyArray<float> epsilon_3;
+
+void initEmission(DyArray<float>& ehat, std::vector<std::string> const& sentence);
+void makeAlpha(std::vector<std::string> const& sentence, DyArray<float> & ehat);
+void makeBeta(std::vector<std::string> const& sentence, DyArray<float>& ehat);
+void makeGamma(int T);
+void makeEpsilons(int T, DyArray<float>& ehat);
+
+void refineHMM(std::vector<std::vector<std::string>> const& sentences){
+	// enhance speed by calculating oovemission proprocessing
+	int samples = sentences.size();
+	DyArray<float> emit_hat;
+	DyArray<float> initial_cummu({TAGNUM});
+	DyArray<float> transition_cummu({TAGNUM, TAGNUM});
+	DyArray<float> trigram_cummu({TAGNUM, TAGNUM, TAGNUM});
+	DyArray<float> visit_cummu({TAGNUM});
+	DyArray<float> visit_pair_cummu({TAGNUM, TAGNUM});
+	DyArray<float> observ_cummu({TAGNUM, EQCLASS});
+
+	initial_cummu.clear(0);
+	transition_cummu.clear(0);
+	trigram_cummu.clear(0);
+	observ_cummu.clear(0);
+	visit_cummu.clear(0);
+	visit_pair_cummu.clear(0);
+
+	for(auto const& sent : sentences ){
+		int T = sent.size();
+		initEmission(emit_hat, sent);
+		makeAlpha(sent, emit_hat);
+		makeBeta(sent, emit_hat);
+		makeGamma(T);
+		makeEpsilons(T, emit_hat);
+
+		for(int t = 0; t < T - 2; t++){
+			// cummulate for initial
+			for(int i = 0; i < TAGNUM; i++){
+				initial_cummu[{i}] += Gamma[{0, i}];
 			}
-			tokenized.push_back(string(1, c));
-			tlen = 0;
-		}else if(tlen && (c == ' ' || c == '\n' || c == '\t' || c == '\r')){
-			// process sub-word tokenizing TODO
-			string word = sentence.substr(i-tlen, tlen);
-			c_at = word.find('\'');
-			if(c_at != string::npos && c_at != 0){
-				tokenized.push_back(word.substr(0, c_at));
-				word.erase(0, c_at);
-			}				
-			tokenized.push_back(word);
-			tlen = 0;
-		}else if(i == slen - 1){
-			// process sub-word tokenizing TODO
-			string word = sentence.substr(i-tlen, 1+tlen);
-			c_at = word.find('\'');
-			if(c_at != string::npos && c_at != 0){
-				tokenized.push_back(word.substr(0, c_at));
-				word.erase(0, c_at);
-			}				
-			tokenized.push_back(word);
-			tlen = 0;
+
+			// cummulate for transition
+			for(int i = 0; i < TAGNUM; i++){
+				for(int j = 0; j < TAGNUM; j++){
+					transition_cummu[{i, j}] += epsilon[{t, i, j}];
+				}
+				visit_cummu[{i}] += Gamma[{t, i}];
+			}
+
+			// cummulate for trigram
+			for(int i = 0; i < TAGNUM; i++){
+				for(int j = 0; j < TAGNUM; j++){
+					for(int k = 0; k < TAGNUM; k++){
+						trigram_cummu[{i, j, k}] += epsilon_3[{t, i, j, k}];
+					}
+				}
+			}
+
+			// cummulate for emission
+			int index = wordIndex(sent[t]);
+			if(index != -1){
+				for(int i = 0; i < TAGNUM; i++){
+					observ_cummu[{i, index}] += Gamma[{t, i}];
+				}
+			}
 		}
-		else
-			tlen++;
+	}
+
+	// reestimate model
+	for(int i = 0; i < TAGNUM; i++){
+		// initial
+		initial[i] = initial_cummu[{i}] / samples;
+	}
+
+	for(int i = 0; i < TAGNUM; i++){
+		// transition
+		for(int j = 0; visit_cummu[{i}] > 0 && j < TAGNUM; j++){
+			transition[i][j] = transition_cummu[{i, j}] / visit_cummu[{i}];
+			for(int k = 0; transition_cummu[{i, j}] > 0 && k < TAGNUM; k++){
+				trigram[i][j][k] = trigram_cummu[{i, j, k}] / transition_cummu[{i, j}];
+			}
+		}
+
+		for(int j = 0; visit_cummu[{i}] > 0 && j < EQCLASS; j++){
+			emission[i][j] = observ_cummu[{i, j}] / visit_cummu[{i}];
+		}
+	}
+
+
+}
+void initEmission(DyArray<float>& ehat, std::vector<std::string> const& sentence){
+	int T = sentence.size();
+	ehat.reshape({T, TAGNUM});
+	for(int t = 0; t < T; t++){
+		int index = wordIndex(sentence[t]);
+		for(int i = 0; i < TAGNUM; i++){
+			ehat[{t, i}] = index==-1 ? (float)oovEmission(sentence[t], i) : (float)emission[i][index];
+		}
+	}
+}
+void makeAlpha(std::vector<std::string> const& sentence, DyArray<float>& ehat){
+	int T = sentence.size();
+
+	alpha.reshape({T, TAGNUM});
+	alpha.clear(0);
+
+	// t = 0
+	for(int i = 0; i < TAGNUM; i++){
+		float emi_i = ehat[{0, i}];
+		if(emi_i>0){
+			alpha[{0, i}] = initial[i] * emi_i;
+		}
+	}
+
+	if(T > 1){
+		// t = 1
+		// index = indices[1];
+		for(int i = 0; i < TAGNUM; i++){
+			float emi_i = ehat[{1, i}];
+			for(int j = 0; j < TAGNUM; j++){				
+				if(emi_i>0 && transition[j][i]>0){
+					alpha[{1, i}] += alpha[{0, j}] * transition[j][i] * emi_i;	
+				}
+			}
+		}
+
+		// t > 1
+		for(int t = 2; t < T;t++){
+			// index = indices[t];
+			for(int i = 0; i < TAGNUM; i++){
+				float emi_i = ehat[{t, i}];
+				if(emi_i>0){
+					// int index2 = indices[t-1];
+					for(int j = 0; j < TAGNUM; j++){
+						float emi_j = ehat[{t-1, j}];
+						if(emi_j>0){
+							float prior = 0.;
+							for(int k = 0; k < TAGNUM; k++){
+								if(trigram[k][j][i] > 0){
+									prior += alpha[{t-2, j, k}] * trigram[k][j][i];
+								}
+							}
+							alpha[{t, i}] = prior * emi_i * emi_j;
+						}
+					}
+				}
+			}
+		}
+	}	
+}
+void makeBeta(std::vector<std::string> const& sentence, DyArray<float>& ehat){
+	int T = sentence.size();
+
+	beta.reshape({T, TAGNUM});
+	beta.clear(0);
+
+	// t = T - 1
+	for(int i = 0; i < TAGNUM; i++){
+		beta[{T-1, i}] = 1.;
+	}
+
+	if(T > 1){
+		// t = T - 2
+		for(int j = 0; j < TAGNUM; j++){			
+			for(int i = 0; i < TAGNUM; i++){	
+				float emi_i = ehat[{T-1, i}];			
+				if(emi_i>0 && transition[j][i]>0){
+					beta[{T-2, j}] += beta[{T-1, i}] * transition[j][i] * emi_i;	
+				}
+			}
+		}
+
+		// t > 1
+		for(int t = T-3; t >= 0;t--){
+			for(int k = 0; k < TAGNUM; k++){
+				for(int j = 0; j < TAGNUM; j++){	
+					float emi_j = ehat[{t+1, j}];	
+					if(emi_j>0){	
+						for(int i = 0; i < TAGNUM; i++){	
+							float emi_i = ehat[{t+2, i}];			
+							if(emi_i>0){
+								beta[{t, k}] += beta[{t+2, i}] * trigram[k][j][i] * emi_i * emi_j;	
+							}
+						}
+					}
+				}
+			}
+		}
+	}	
+}
+void makeGamma(int T){
+	Gamma.reshape({T, TAGNUM});
+	
+	for(int t = 0; t < T; t++){
+		float sum = 0.;
+		for(int i = 0; i < TAGNUM; i++){
+			Gamma[{t, i}] = alpha[{t, i}] * beta[{t, i}];
+			sum += Gamma[{t, i}];
+		}
+		if(sum > 0){
+			for(int i = 0; i < TAGNUM; i++){
+				Gamma[{t, i}] /= sum;
+			}
+		}
+	}
+}
+void makeEpsilons(int T, DyArray<float>& ehat){
+	epsilon.reshape({T, TAGNUM, TAGNUM});
+	
+	for(int t = 0; t < T - 1; t++){
+		float sum = 0;
+		for(int j = 0; j < TAGNUM; j++){
+			for(int i = 0; i < TAGNUM; i++){
+				epsilon[{t, j, i}] = alpha[{t, j}] * transition[j][i] * ehat[{t+1, i}] * beta[{t+1, i}];
+				sum += epsilon[{t, j, i}];
+			}
+		}
+		if(sum > 0){
+			for(int j = 0; j < TAGNUM; j++){
+				for(int i = 0; i < TAGNUM; i++){
+					epsilon[{t, j, i}] /= sum;
+				}
+			}
+		}
+	}
+
+	epsilon_3.reshape({T, TAGNUM, TAGNUM, TAGNUM});
+	
+	for(int t = 0; t < T - 2; t++){
+		float sum = 0;
+		for(int k = 0; k < TAGNUM; k++){
+			for(int j = 0; j < TAGNUM; j++){
+				for(int i = 0; i < TAGNUM; i++){
+					epsilon_3[{t, k, j, i}] = alpha[{t, k}] * trigram[k][j][i] * ehat[{t+1, j}] * ehat[{t+2, i}] * beta[{t+2, i}];
+					sum += epsilon_3[{t, k, j, i}];
+				}
+			}
+		}
+		if(sum > 0){
+			for(int k = 0; k < TAGNUM; k++){
+				for(int j = 0; j < TAGNUM; j++){
+					for(int i = 0; i < TAGNUM; i++){
+						epsilon_3[{t, k, j, i}] /= sum;
+					}
+				}
+			}
+		}
+	}
+}
+// void makeAlpha(std::vector<std::string> const& sentence, std::vector<int> const& indices){
+// 	int T = sentence.size();
+
+// 	alpha.reshape({T, TAGNUM, TAGNUM});
+// 	alpha.clear(0);
+
+// 	// t = 0
+// 	int index = indices[0];
+// 	for(int i = 0; i < TAGNUM; i++){
+// 		double emi_i = index==-1 ? oovEmission(sentence[0], i) : emission[i][index];
+// 		if(emi_i>0){
+// 			for(int j = 0; j < TAGNUM; j++){
+// 				alpha[{0, i, j}] = initial[i] * emi_i;
+// 			}
+// 		}
+// 	}
+
+// 	if(T > 1){
+// 		// t = 1
+// 		index = indices[1];
+// 		for(int i = 0; i < TAGNUM; i++){
+// 			double emi_i = index==-1 ? oovEmission(sentence[1], i) : emission[i][index];
+// 			for(int j = 0; j < TAGNUM; j++){				
+// 				if(emi_i>0 && transition[j][i]>0){
+// 					alpha[{1, i,j}] = alpha[{0, j,0}] * transition[j][i] * emi_i;	
+// 				}
+// 			}
+// 		}
+
+// 		// t > 1
+// 		for(int t = 2; t < T;t++){
+// 			index = indices[t];
+// 			for(int i = 0; i < TAGNUM; i++){
+// 				double emi_i = index==-1 ? oovEmission(sentence[t], i) : emission[i][index];
+// 				if(emi_i>0){					
+// 					for(int j = 0; j < TAGNUM; j++){
+// 						double prior = 0.;
+// 						for(int k = 0; k < TAGNUM; k++){
+// 							if(trigram[k][j][i] > 0){
+// 								prior += alpha[{t-1, j,k}] * trigram[k][j][i];
+// 							}
+// 						}
+// 						alpha[{t, i, j}] = prior * emi_i; 
+// 					}
+// 				}
+// 			}
+// 		}
+// 	}	
+// }
+// void makeBeta(std::vector<std::string> const& sentence, std::vector<int> const& indices){
+// 	int T = sentence.size();
+
+// 	beta.reshape({TAGNUM, T});
+// 	beta.clear(0);
+
+// 	// t = T-1
+// 	int index = indices[T-1];
+// 	for(int i = 0; i < TAGNUM; i++){
+// 		beta[{i,T-1}] = 1.;
+// 	}
+
+// 	// t < T-1
+// 	for(int t = T-2; t >= 0 ; t--){
+// 		index = indices[t+1];
+// 		for(int j = 0; j < TAGNUM; j++){
+// 			for(int i = 0; i < TAGNUM; i++){
+// 				double emi_i = index==-1 ? oovEmission(sentence[t+1], i) : emission[i][index];
+// 				beta[{j,t}] += transition[j][i] * emi_i * beta[{i,t+1}];
+// 			}
+// 		}
+// 	}
+// }
+
+
+
+
+
+
+
+
+
+void load_lexicon(std::string const& name){
+	std::ifstream source(name, std::ifstream::in);
+	std::string buffer;
+	
+	int freq;
+
+	std::vector<std::vector<int> > f_S_Eqv;
+	std::vector<int> sum_of_Suffix(EQCLASS, 0);
+	int d;
+	while(!source.eof()){
+		source >> buffer >> freq >> d;
+		std::string vocab(buffer);
+		dict_map[vocab] = d;
+
+		if(freq < RARETHRES){
+			for(int i = 0; i < MAXSUFFIX && i < vocab.size(); i++){
+				std::string suf = vocab.substr(vocab.size()-1-i,i+1);
+				int suf_index = suffIndex(suf);
+				if(suf_index==-1){					
+					f_S_Eqv.push_back(std::vector<int>(EQCLASS, 0));
+					suf_index = f_S_Eqv.size() - 1;
+					suffix_map[suf] = suf_index;
+				}
+				f_S_Eqv[suf_index][d] += freq;
+				sum_of_Suffix[d] += freq;
+			}
+		}
+	}
+	std::cerr << "[Info] Dictionary Size: " << dict_map.size() << std::endl;
+	std::cerr << "[Info] Suffix Map Size: " << suffix_map.size() << std::endl;
+
+	// TODO: remove suffixes that appeared only once?
+	// suffix smoothing	
+	suf_emission.reshape({TAGNUM, (int)suffix_map.size()});
+
+	for(int tg = 0; tg < TAGNUM; tg++){
+		for(int s = 0; s < suffix_map.size(); s++){
+			double prob = 0.;
+			for(int q = 0; q < EQCLASS; q++){
+				double P_S_Eqv = sum_of_Suffix[q] ? ((double)f_S_Eqv[s][q])/(double)sum_of_Suffix[q] : 0.;
+				prob += emission[tg][q] * P_S_Eqv;
+			}
+			suf_emission[{tg, s}] = prob;
+		}		
 	}
 }
 
-void tokenizer(string const& sentence, vector<string>& tokenized){
-
-	int slen = sentence.size();
-	int tlen = 0;
-	int c_at;
-	for(int i = 0; i < slen; i++){
-		char c = sentence[i];
-		if(tlen && (c == ' ' || c == '\n' || c == '\t' || c == '\r')){
-			string word = sentence.substr(i-tlen, tlen);							
-			tokenized.push_back(word);
-			tlen = 0;
-		}else if(i == slen - 1){
-			string word = sentence.substr(i-tlen, 1+tlen);							
-			tokenized.push_back(word);
-			tlen = 0;
-		}
-		else
-			tlen++;
-	}
-}
-
-
-
-void load_model(char* name){
-	ifstream source(name, ifstream::in);
-	string buffer;
+void load_model(std::string const& name, std::vector<std::string>& tagname){
+	std::ifstream source(name, std::ifstream::in);
+	std::string buffer;
 
 	source >> buffer;
 	assert(buffer == "#initial");
 	source >> TAGNUM;
-	cerr << "[Info] Tagset Size: " << TAGNUM << endl;
+	std::cerr << "[Info] Tagset Size: " << TAGNUM << std::endl;
 	tagname.resize(TAGNUM);
 	
 	for(int i = 0; i < TAGNUM; i++){
@@ -290,49 +570,53 @@ void load_model(char* name){
 			source >> emission[i][j];
 		}
 	}
-	cerr << "[Info] Equivalent Classes: " << EQCLASS << endl;
+	std::cerr << "[Info] Equivalent Classes: " << EQCLASS << std::endl;
+}
 
-	source >> buffer;
-	assert(buffer == "#vocab_freq_Eqv");
-	int freq;
+void save_model(std::string const& name, std::vector<std::string> const& tagname){
+	std::ofstream destin(name, std::ofstream::out);
+	std::string buffer;
 
-	vector<vector<int> > f_S_Eqv;
-	vector<int> sum_of_Suffix(EQCLASS, 0);
-	int d;
-	while(!source.eof()){
-		source >> buffer >> freq >> d;
-		string vocab(buffer);
-		dict_map[vocab] = d;
+	destin << std::fixed << std::setprecision(9);// << std::endl;
 
-		if(freq < RARETHRES){
-			for(int i = 0; i < MAXSUFFIX && i < vocab.size(); i++){
-				string suf = vocab.substr(vocab.size()-1-i,i+1);
-				int suf_index = suffIndex(suf);
-				if(suf_index==-1){					
-					f_S_Eqv.push_back(vector<int>(EQCLASS, 0));
-					suf_index = f_S_Eqv.size() - 1;
-					suffix_map[suf] = suf_index;
-				}
-				f_S_Eqv[suf_index][d] += freq;
-				sum_of_Suffix[d] += freq;
+	destin << "#initial " << std::endl;
+	destin << TAGNUM << " " << std::endl;
+
+	for(int i = 0; i < TAGNUM; i++){
+		destin << tagname[i] << " ";
+	}
+	destin << std::endl;
+	for(int i = 0; i < TAGNUM; i++){
+		destin << initial[i] << " ";
+	}
+
+	destin << std::endl << "#transition " << std::endl;
+
+	for(int i = 0; i < TAGNUM; i++){		
+		for(int j = 0; j < TAGNUM; j++){		
+			destin << transition[i][j] << " ";
+		}
+		destin << std::endl;
+	}
+
+	destin << std::endl << "#trigram " << std::endl;
+
+	for(int i = 0; i < TAGNUM; i++){		
+		for(int j = 0; j < TAGNUM; j++){		
+			for(int k = 0; k < TAGNUM; k++){		
+				destin << trigram[i][j][k] << " ";
 			}
+			destin << std::endl;
 		}
 	}
-	cerr << "[Info] Dictionary Size: " << dict_map.size() << endl;
-	cerr << "[Info] Suffix Map Size: " << suffix_map.size() << endl;
 
-	// TODO: remove suffixes that appeared only once?
-	// suffix smoothing	
-	suf_emission.reshape({TAGNUM, (int)suffix_map.size()});
-
-	for(int tg = 0; tg < TAGNUM; tg++){
-		for(int s = 0; s < suffix_map.size(); s++){
-			double prob = 0.;
-			for(int q = 0; q < EQCLASS; q++){
-				double P_S_Eqv = sum_of_Suffix[q] ? ((double)f_S_Eqv[s][q])/(double)sum_of_Suffix[q] : 0.;
-				prob += emission[tg][q] * P_S_Eqv;
-			}
-			suf_emission[{tg, s}] = prob;
-		}		
+	destin << std::endl << "#emission " << std::endl;
+	
+	destin << EQCLASS << " " << std::endl;
+	for(int i = 0; i < TAGNUM; i++){		
+		for(int j = 0; j < EQCLASS; j++){
+			destin << emission[i][j] << " ";
+		}
+		destin << std::endl;
 	}
 }

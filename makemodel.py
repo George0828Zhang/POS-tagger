@@ -97,6 +97,7 @@ best100 = sorted(wordcount, key=lambda x: wordcount[x])[-100:]
 
 # output probability Model
 file = open("model.txt", "wt")
+file_lex = open("lexicon.txt", "wt")
 
 # initial probs
 file.write("#initial \n")
@@ -204,7 +205,7 @@ for sentence in tagged_sentences:
 
 
 file.write("\n#emission \n")
-file.write("{}\n".format(len(Eqv)))
+file.write("{} \n".format(len(Eqv)))
 # emission probs
 for tag in initial:
 	denom = sum(emission[tag])
@@ -216,10 +217,10 @@ for tag in initial:
 	file.write("\n")
 
 
-file.write("\n#vocab_freq_Eqv\n")
+# file_lex.write("\n#vocab_freq_Eqv\n")
 for word in words:
-	file.write("{} {} {}\n".format(word, wordcount[word], Eqv.index(words[word])))	
-file.write("\n")
+	file_lex.write("{} {} {}\n".format(word, wordcount[word], Eqv.index(words[word])))	
+file_lex.write("\n")
 
 
 
