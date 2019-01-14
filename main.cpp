@@ -1,36 +1,108 @@
 #include <vector>
 #include <string>
-#include <iostream>
+#include <iostream>// for cin,cout,cerr,endl
+#include <fstream>// for input file
+#include <sstream>// for parsing ord
 #include <cassert>
+#include <chrono>// for time evaluation
 #include "tag.hpp"
 
+using uchar = unsigned char;
+
+void parseInput(
+	int argc, 
+	char** argv, 
+	std::string& fmodel, 
+	std::string& flexicon,
+	std::string& finput,
+	std::string& foutput,
+	int& order);
+
 int main(int argc, char** argv){
+	auto start = std::chrono::system_clock::now();
+	std::string modelname;
+	std::string lexiname;
+	std::string input;
+	std::string output;
+	int order;
+
+	parseInput(argc,argv,modelname,lexiname,input,output,order);
+
+	std::ifstream readfromf(input, std::fstream::in);
+	std::ofstream writetof(output, std::fstream::out);
+
+	std::istream& in = input.size() ? readfromf : std::cin;
+	std::ostream& out = output.size() ? writetof : std::cout;
+
+	std::cerr << "[Info] Mode: " << (input.size() ? "File" : "Input") << \
+	" to " << (output.size() ? "file" : "output")  << ", order = " << order << std::endl;
+
 	std::vector<std::string> tagname;
-	assert(argc==3);
-	load_model(argv[1], tagname);
-	load_lexicon(argv[2]);
+	load_model(modelname, tagname);
+	load_lexicon(lexiname);
+	smooth_transition();
+	smooth_trigram();
+	smooth_emission();
+
 	std::string sentence;
-	while(getline(std::cin, sentence)){
-		// cerr << "input received." << endl;
-		// if(sentence.size()<2) continue;
+	while(getline(in, sentence)){
+		// std::cerr << "[Debug] sent: " << sentence << "\n";
 		std::vector<std::string> tokenized;
-		tokenizer(sentence, tokenized);
+		if(input.size())
+			tokenizer(sentence, tokenized);
+		else
+			tokenizer2(sentence, tokenized);
+		int T = tokenized.size();
+
 		// Capitalization
-		std::string Cap(tokenized[0]);
-		if(tokenized[0][0]>='A' && tokenized[0][0]<='Z') 
-			tokenized[0][0] = tolower(tokenized[0][0]);
+		// std::string Cap(tokenized[0]);
+		// if(tokenized[0][0]>='A' && tokenized[0][0]<='Z') 
+		// tokenized[0][0] = tolower(tokenized[0][0]);
+
 		// POS tagging
-		std::vector<int> tags(tokenized.size());
-		POStag3(tokenized, tags);
-		tokenized[0] = Cap;
-		for(int i = 0; i < tags.size(); i++){
-			std::cout << tokenized[i] << "/" << tagname[tags[i]] << " ";
+		std::vector<int> tags(T);
+		if(order==3)
+			POStag3(tokenized, tags);
+		else
+			POStag(tokenized, tags);
+		// tokenized[0] = Cap;
+		for(int i = 0; i < T; i++){
+			out << tokenized[i] << "/" << tagname[tags[i]] << " ";
 		}
-		std::cout << std::endl;
+		out << std::endl;
 	}
+
+	auto end = std::chrono::system_clock::now(); 
+    std::chrono::duration<double> elapsed_seconds = end-start; 
+    std::cerr << "[Info] Elapsed time: " << elapsed_seconds.count() << "s\n";
 }
 
-
+void parseInput(
+	int argc, 
+	char** argv, 
+	std::string& fmodel, 
+	std::string& flexicon,
+	std::string& finput,
+	std::string& foutput,
+	int& order)
+{
+	order = 2;
+	for(int i = 1; i < argc - 1; i++){
+		std::string input(argv[i]);
+		if(input=="-m"){
+			fmodel = std::string(argv[i+1]);
+		}else if(input=="-l"){
+			flexicon = std::string(argv[i+1]);
+		}else if(input=="-i"){
+			finput = std::string(argv[i+1]);
+		}else if(input=="-o"){
+			foutput = std::string(argv[i+1]);
+		}else if(input=="-ord"){
+			std::stringstream(argv[i+1]) >> order;
+			order = std::min(3, std::max(2, order));
+		}
+	}
+}
 
 void tokenizer2(std::string const& sentence, std::vector<std::string>& tokenized){
 	const std::string common_ch = "~!@#$%%^&*()_+=`\\/.,<>?\":;";
@@ -39,7 +111,7 @@ void tokenizer2(std::string const& sentence, std::vector<std::string>& tokenized
 	int tlen = 0;
 	int c_at;
 	for(int i = 0; i < slen; i++){
-		char c = sentence[i];
+		uchar c = sentence[i];
 		if(common_ch.find(c) != std::string::npos){
 			if(tlen){
 				// process sub-word tokenizing TODO
@@ -85,7 +157,7 @@ void tokenizer(std::string const& sentence, std::vector<std::string>& tokenized)
 	int tlen = 0;
 	int c_at;
 	for(int i = 0; i < slen; i++){
-		char c = sentence[i];
+		uchar c = sentence[i];
 		if(tlen && (c == ' ' || c == '\n' || c == '\t' || c == '\r')){
 			std::string word = sentence.substr(i-tlen, tlen);							
 			tokenized.push_back(word);

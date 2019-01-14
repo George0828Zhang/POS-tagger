@@ -2,11 +2,11 @@
 tagged_sentences = []
 
 # from nltk.corpus import masc_tagged as corpus
-# tagged_sentences += corpus.tagged_sents();
+# tagged_sentences += corpus.tagged_sents(tagset='universal');
 
 
 from nltk.corpus import treebank as corpus
-tagged_sentences += corpus.tagged_sents();
+tagged_sentences += corpus.tagged_sents(tagset='universal');
 
 
 initial = {}
@@ -113,18 +113,20 @@ for tag in initial:
 
 file.write("\n#transition \n")
 # transition probs
-lbd = [0, 0]
-for t1 in transition:
-	for t2 in transition[t1]:		
-		fq = transition[t1][t2]
-		p1 = (fq - 1)/(initial[t1]-1) if initial[t1]>1 else 0
-		p2 = (initial[t2]-1)/(corpus_N-1) if corpus_N>1 else 0
-		mx = p1 if p1 > p2 else p2
-		if mx == p1:
-			lbd[1] += fq
-		elif mx == p2:
-			lbd[0] += fq
-sumlbd = sum(lbd)
+# lbd = [0, 0]
+# for t1 in transition:
+# 	for t2 in transition[t1]:		
+# 		fq = transition[t1][t2]
+# 		p1 = (fq - 1)/(initial[t1]-1) if initial[t1]>1 else 0
+# 		p2 = (initial[t2]-1)/(corpus_N-1) if corpus_N>1 else 0
+# 		mx = p1 if p1 > p2 else p2
+# 		if mx == p1:
+# 			lbd[1] += fq
+# 		elif mx == p2:
+# 			lbd[0] += fq
+# sumlbd = sum(lbd)
+sumlbd = 1
+lbd = [0, 1]
 
 for ptag in initial:
 	denom = sum(transition[ptag].values())
@@ -139,23 +141,24 @@ for ptag in initial:
 
 file.write("\n#trigram \n")
 # traigram transition probs
-lbd = [0, 0, 0]
-for key in trigram:
-	for t3 in trigram[key]:
-		(t1, t2) = key
-		fq = trigram[key][t3]
-		p1 = (fq - 1)/(transition[t1][t2]-1) if transition[t1][t2]>1 else 0
-		p2 = (transition[t2][t3]-1)/(initial[t2]-1) if initial[t2]>1 else 0
-		p3 = (initial[t3] - 1)/(corpus_N-1) if corpus_N>1 else 0
-		mx = p3 if p3 > p2 else p2
-		mx = mx if mx > p1 else p1
-		if mx == p1:
-			lbd[2] += fq
-		elif mx == p2:
-			lbd[1] += fq
-		elif mx == p3:
-			lbd[0] += fq
-sumlbd = sum(lbd)
+# lbd = [0, 0, 0]
+# for key in trigram:
+# 	for t3 in trigram[key]:
+# 		(t1, t2) = key
+# 		fq = trigram[key][t3]
+# 		p1 = (fq - 1)/(transition[t1][t2]-1) if transition[t1][t2]>1 else 0
+# 		p2 = (transition[t2][t3]-1)/(initial[t2]-1) if initial[t2]>1 else 0
+# 		p3 = (initial[t3] - 1)/(corpus_N-1) if corpus_N>1 else 0
+# 		mx = p3 if p3 > p2 else p2
+# 		mx = mx if mx > p1 else p1
+# 		if mx == p1:
+# 			lbd[2] += fq
+# 		elif mx == p2:
+# 			lbd[1] += fq
+# 		elif mx == p3:
+# 			lbd[0] += fq
+# sumlbd = sum(lbd)
+lbd = [0, 0, 1]
 
 for pptag in initial:
 	for ptag in initial:
@@ -170,8 +173,8 @@ for pptag in initial:
 			else:
 				term3 = 0
 			file.write("{:.9f} ".format((term1+term2+term3)/sumlbd))
-			if((term1+term2+term3)/sumlbd <= 0):
-				print(lbd, initial[tag], transition[ptag][tag])
+			# if((term1+term2+term3)/sumlbd <= 0):
+			# 	print(lbd, initial[tag], transition[ptag][tag])
 		file.write("\n")
 
 Eqv = []

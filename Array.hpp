@@ -108,11 +108,12 @@ DyArray
 
 		T& operator[](const std::vector<int>& indices)
 		{
-			int ptr = 0;
-			for(int i = 0; i < _access.size(); i++)
-				ptr += _access[i]*indices[i];
+			// int ptr = 0;
+			// for(int i = 0; i < _access.size(); i++)
+			// 	ptr += _access[i]*indices[i];
 			
-			return _data[ptr];
+			// return _data[ptr];
+			return _data[std::inner_product(_access.begin(), _access.end(), indices.begin(), 0)];
 		}
 
 		void reshape(const std::vector<int>& new_shape)

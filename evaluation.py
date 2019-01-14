@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
-# with open("result.txt", "r") as res
-# with open("answer.txt", "r") as ans
-res = open("result.txt", "r")
-ans = open("answer.txt", "r")
+import sys
+
+resname = sys.argv[1]
+ansname = sys.argv[2] 
+
+res = open(resname, "r")
+ans = open(ansname, "r")
+# res = open("result.txt", "r")
+# ans = open("answer.txt", "r")
 
 blkcorrect = 0
 blktotal = 0
