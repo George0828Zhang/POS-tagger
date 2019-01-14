@@ -2,9 +2,7 @@
 #define _TAG_HPP_
 #include <string>
 #include <vector>
-void smooth_emission();
-void smooth_transition();
-void smooth_trigram();
+void smooth_probabilities();
 void refineHMM(std::string const& name);
 void load_model(std::string const& name, std::vector<std::string>& tagname);
 void save_model(std::string const& name, std::vector<std::string> const& tagname);

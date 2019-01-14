@@ -40,9 +40,7 @@ int main(int argc, char** argv){
 	std::vector<std::string> tagname;
 	load_model(modelname, tagname);
 	load_lexicon(lexiname);
-	smooth_transition();
-	smooth_trigram();
-	smooth_emission();
+	smooth_probabilities();
 
 	std::string sentence;
 	while(getline(in, sentence)){
