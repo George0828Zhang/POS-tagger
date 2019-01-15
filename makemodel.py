@@ -8,6 +8,8 @@ tagged_sentences = []
 from nltk.corpus import treebank as corpus
 tagged_sentences += corpus.tagged_sents(tagset='universal');
 
+begin = {}
+end = {}
 
 initial = {}
 # words = set()
@@ -71,11 +73,15 @@ def process_token(word, tag, ptag=None, pptag=None):
 for sentence in tagged_sentences:
 	for i, (word, tag) in enumerate(sentence):
 		ptag, pptag = None, None
-		if i > 0:
+		if i == 0:
+			begin[tag] = 1 if tag not in begin else (1+begin[tag])
+		else:
 			ptag = sentence[i-1][1]
 			if i > 1:
 				pptag = sentence[i-2][1]
 		process_token(word, tag, ptag, pptag);
+		if i == len(sentence)-1:
+			end[tag] = 1 if tag not in end else (1+end[tag])
 # def cut(w_t):
 # 	cut = w_t.rfind('_')
 # 	return w_t[:cut], w_t[cut+1:]
@@ -110,6 +116,21 @@ file.write("\n")
 for tag in initial:
 	prob = initial[tag] / denom
 	file.write("{:.9f} ".format(prob))
+
+# begin probs
+file.write("#begin \n")
+denom = sum(begin.values())
+for tag in initial:
+	prob = 0 if tag not in begin else (begin[tag] / denom)
+	file.write("{:.9f} ".format(prob))
+
+# begin probs
+file.write("#end \n")
+denom = sum(end.values())
+for tag in initial:
+	prob = 0 if tag not in end else (end[tag] / denom)
+	file.write("{:.9f} ".format(prob))
+
 
 file.write("\n#transition \n")
 # transition probs

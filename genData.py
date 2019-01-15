@@ -38,7 +38,7 @@ untagged_sentences = []
 #!/usr/bin/env python3
 tagged_sentences = []
 
-from nltk.corpus import brown as corpus
+from nltk.corpus import conll2000 as corpus
 tagged_sentences += corpus.tagged_sents(tagset='universal')
 
 import nltk

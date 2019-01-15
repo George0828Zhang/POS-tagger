@@ -17,7 +17,7 @@
 constexpr int MAXTAGNUM = 62;
 constexpr int RARETHRES = 20;
 constexpr int MAXSUFFIX = 10;
-constexpr int BEAMSIZE = 100;
+constexpr int BEAMSIZE = 50;
 constexpr double inf = std::numeric_limits<double>::infinity();
 
 using Pair = std::array<int, 2>;
@@ -35,6 +35,7 @@ DyArray<double> suf_emission;
 int TAGNUM;
 int EQCLASS;
 int CORPUS_N;
+int t_DET;
 
 int wordIndex(std::string const& word){
 	// auto iter = dict_map.find(word);
@@ -178,8 +179,14 @@ void POStag(std::vector<std::string> const& sentence, std::vector<int>& tag){
 
 		for(int i = 0; i < TAGNUM; i++){
 			double emi_i = index==-1 ? oovEmission(sentence[t], i) : emission[i][index];
-			for(int j = 0; j < TAGNUM; j++){					
+			for(int j = 0; j < TAGNUM; j++){
+
 				double prob = delta[{t-1,j}] * transition[j][i] * emi_i;
+
+				// if(t>1 && phi[{t,j}]==t_DET){
+				// 	prob = delta[{t-1,j}] * trigram[t_DET][j][i] * emi_i;
+				// }
+
 				if(prob > delta[{t,i}]){
 					delta[{t,i}] = prob;
 					phi[{t,i}] = j;							
@@ -427,6 +434,8 @@ void load_model(std::string const& name, std::vector<std::string>& tagname){
 	
 	for(int i = 0; i < TAGNUM; i++){
 		source >> tagname[i];
+		if(tagname[i]=="DET")
+			t_DET = i;
 	}
 	for(int i = 0; i < TAGNUM; i++){
 		source >> initial[i];
